@@ -58,9 +58,9 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tradingbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-      POSTGRES_DB: ${POSTGRES_DB:-tradingbot}
+      POSTGRES_USER: tradingbot
+      POSTGRES_PASSWORD: tradingbot123
+      POSTGRES_DB: tradingbot
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

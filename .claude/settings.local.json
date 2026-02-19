@@ -5,7 +5,8 @@
       "Bash(python scripts/tradingview_gui_simple.py:*)",
       "Bash(ls:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(git add:*)"
     ]
   }
 }
