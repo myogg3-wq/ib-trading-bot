@@ -76,16 +76,16 @@ async def process_order(order_data: dict) -> dict:
     # 2. Risk checks
     if action == "BUY":
         risk_result = await check_all_buy_risks(ticker)
-        if not risk_result:
-            msg = f"⚠️ BUY {ticker} blocked by risk check:\n{risk_result.reason}"
+        if risk_result is False:  # Risk check failed
+            msg = f"⚠️ BUY {ticker} blocked by risk check"
             await send_notification(msg)
-            return {"status": "blocked", "reason": risk_result.reason}
+            return {"status": "blocked", "reason": "risk_check_failed"}
     elif action == "SELL":
         risk_result = await check_sell_risks()
-        if not risk_result:
-            msg = f"⚠️ SELL {ticker} blocked:\n{risk_result.reason}"
+        if risk_result is False:  # Risk check failed
+            msg = f"⚠️ SELL {ticker} blocked by risk check"
             await send_notification(msg)
-            return {"status": "blocked", "reason": risk_result.reason}
+            return {"status": "blocked", "reason": "risk_check_failed"}
 
     # 3. Rate limit
     await rate_limit()
