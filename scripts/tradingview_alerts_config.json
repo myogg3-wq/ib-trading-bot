@@ -1,0 +1,35 @@
+{
+  "description": "TradingView 알림 일괄 생성 설정 파일",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "ADAUSDT",
+    "DOGEUSDT",
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "TSLA",
+    "NVDA"
+  ],
+  "actions": [
+    "BUY",
+    "SELL"
+  ],
+  "webhook_url": "http://localhost:8000/webhook",
+  "timeframes": [
+    "1m",
+    "5m",
+    "15m",
+    "1h",
+    "4h",
+    "1d"
+  ],
+  "strategies": [
+    "RSI Strategy",
+    "MACD Strategy",
+    "EMA Crossover",
+    "Bollinger Bands",
+    "Stochastic Signals"
+  ]
+}

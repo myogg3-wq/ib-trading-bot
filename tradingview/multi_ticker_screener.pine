@@ -1,0 +1,172 @@
+// ============================================
+// Multi-Ticker Screener with Webhook
+// ============================================
+// 하나의 스크립트로 최대 36개 종목 감시
+// 180개 종목 = 이 스크립트를 5번 추가, 각각 다른 종목 세트
+//
+// 사용법:
+//   1. 이 스크립트를 차트에 추가
+//   2. 설정에서 종목 리스트를 입력
+//   3. 알람 생성 → Webhook URL 입력
+//   4. 알람 메시지는 자동으로 JSON 전송됨
+//
+// 알람 메시지에 아래를 복사:
+//   {{message}}
+// ============================================
+
+//@version=6
+indicator("Multi-Ticker Bot [Batch 1]", overlay=true)
+
+// ===== YOUR TRADING LOGIC HERE =====
+// 이 부분을 당신의 매수/매도 조건으로 교체하세요
+// 아래는 예시: RSI 기반
+
+rsiLength = input.int(14, "RSI Length")
+rsiBuyLevel = input.int(30, "RSI Buy (oversold)")
+rsiSellLevel = input.int(70, "RSI Sell (overbought)")
+
+// 매수/매도 조건 함수
+getBuyCondition(src) =>
+    rsi = ta.rsi(src, rsiLength)
+    ta.crossover(rsi, rsiBuyLevel)
+
+getSellCondition(src) =>
+    rsi = ta.rsi(src, rsiLength)
+    ta.crossunder(rsi, rsiSellLevel)
+
+// ===== END OF TRADING LOGIC =====
+
+
+// ===== TICKER LIST (edit these!) =====
+// 한 배치당 최대 36개 (안전 마진)
+// 나머지는 Batch 2, 3, 4, 5에
+
+t01 = input.symbol("AAPL",  "Ticker 01")
+t02 = input.symbol("MSFT",  "Ticker 02")
+t03 = input.symbol("GOOGL", "Ticker 03")
+t04 = input.symbol("AMZN",  "Ticker 04")
+t05 = input.symbol("TSLA",  "Ticker 05")
+t06 = input.symbol("NVDA",  "Ticker 06")
+t07 = input.symbol("META",  "Ticker 07")
+t08 = input.symbol("JPM",   "Ticker 08")
+t09 = input.symbol("V",     "Ticker 09")
+t10 = input.symbol("JNJ",   "Ticker 10")
+t11 = input.symbol("WMT",   "Ticker 11")
+t12 = input.symbol("PG",    "Ticker 12")
+t13 = input.symbol("MA",    "Ticker 13")
+t14 = input.symbol("HD",    "Ticker 14")
+t15 = input.symbol("DIS",   "Ticker 15")
+t16 = input.symbol("BAC",   "Ticker 16")
+t17 = input.symbol("XOM",   "Ticker 17")
+t18 = input.symbol("PFE",   "Ticker 18")
+t19 = input.symbol("CSCO",  "Ticker 19")
+t20 = input.symbol("ADBE",  "Ticker 20")
+t21 = input.symbol("CRM",   "Ticker 21")
+t22 = input.symbol("NFLX",  "Ticker 22")
+t23 = input.symbol("AMD",   "Ticker 23")
+t24 = input.symbol("INTC",  "Ticker 24")
+t25 = input.symbol("CMCSA", "Ticker 25")
+t26 = input.symbol("COST",  "Ticker 26")
+t27 = input.symbol("ORCL",  "Ticker 27")
+t28 = input.symbol("ABT",   "Ticker 28")
+t29 = input.symbol("QCOM",  "Ticker 29")
+t30 = input.symbol("T",     "Ticker 30")
+t31 = input.symbol("NKE",   "Ticker 31")
+t32 = input.symbol("UNH",   "Ticker 32")
+t33 = input.symbol("LLY",   "Ticker 33")
+t34 = input.symbol("MRK",   "Ticker 34")
+t35 = input.symbol("AVGO",  "Ticker 35")
+t36 = input.symbol("TXN",   "Ticker 36")
+
+// Enable/disable individual tickers
+e01 = input.bool(true, "Enable 01")
+e02 = input.bool(true, "Enable 02")
+e03 = input.bool(true, "Enable 03")
+e04 = input.bool(true, "Enable 04")
+e05 = input.bool(true, "Enable 05")
+e06 = input.bool(true, "Enable 06")
+e07 = input.bool(true, "Enable 07")
+e08 = input.bool(true, "Enable 08")
+e09 = input.bool(true, "Enable 09")
+e10 = input.bool(true, "Enable 10")
+e11 = input.bool(true, "Enable 11")
+e12 = input.bool(true, "Enable 12")
+e13 = input.bool(true, "Enable 13")
+e14 = input.bool(true, "Enable 14")
+e15 = input.bool(true, "Enable 15")
+e16 = input.bool(true, "Enable 16")
+e17 = input.bool(true, "Enable 17")
+e18 = input.bool(true, "Enable 18")
+e19 = input.bool(true, "Enable 19")
+e20 = input.bool(true, "Enable 20")
+e21 = input.bool(true, "Enable 21")
+e22 = input.bool(true, "Enable 22")
+e23 = input.bool(true, "Enable 23")
+e24 = input.bool(true, "Enable 24")
+e25 = input.bool(true, "Enable 25")
+e26 = input.bool(true, "Enable 26")
+e27 = input.bool(true, "Enable 27")
+e28 = input.bool(true, "Enable 28")
+e29 = input.bool(true, "Enable 29")
+e30 = input.bool(true, "Enable 30")
+e31 = input.bool(true, "Enable 31")
+e32 = input.bool(true, "Enable 32")
+e33 = input.bool(true, "Enable 33")
+e34 = input.bool(true, "Enable 34")
+e35 = input.bool(true, "Enable 35")
+e36 = input.bool(true, "Enable 36")
+
+
+// Webhook secret
+webhookSecret = input.string("YOUR_WEBHOOK_SECRET", "Webhook Secret")
+
+
+// ===== SCAN FUNCTION =====
+scanTicker(sym, enabled) =>
+    if enabled and sym != ""
+        [tickerClose, tickerBuy, tickerSell] = request.security(sym, timeframe.period, [close, getBuyCondition(close), getSellCondition(close)])
+
+        if tickerBuy
+            alert('{"secret":"' + webhookSecret + '","action":"BUY","ticker":"' + sym + '","price":"' + str.tostring(tickerClose) + '"}', alert.freq_once_per_bar)
+
+        if tickerSell
+            alert('{"secret":"' + webhookSecret + '","action":"SELL","ticker":"' + sym + '","price":"' + str.tostring(tickerClose) + '"}', alert.freq_once_per_bar)
+
+
+// ===== RUN SCAN ON ALL TICKERS =====
+scanTicker(t01, e01)
+scanTicker(t02, e02)
+scanTicker(t03, e03)
+scanTicker(t04, e04)
+scanTicker(t05, e05)
+scanTicker(t06, e06)
+scanTicker(t07, e07)
+scanTicker(t08, e08)
+scanTicker(t09, e09)
+scanTicker(t10, e10)
+scanTicker(t11, e11)
+scanTicker(t12, e12)
+scanTicker(t13, e13)
+scanTicker(t14, e14)
+scanTicker(t15, e15)
+scanTicker(t16, e16)
+scanTicker(t17, e17)
+scanTicker(t18, e18)
+scanTicker(t19, e19)
+scanTicker(t20, e20)
+scanTicker(t21, e21)
+scanTicker(t22, e22)
+scanTicker(t23, e23)
+scanTicker(t24, e24)
+scanTicker(t25, e25)
+scanTicker(t26, e26)
+scanTicker(t27, e27)
+scanTicker(t28, e28)
+scanTicker(t29, e29)
+scanTicker(t30, e30)
+scanTicker(t31, e31)
+scanTicker(t32, e32)
+scanTicker(t33, e33)
+scanTicker(t34, e34)
+scanTicker(t35, e35)
+scanTicker(t36, e36)

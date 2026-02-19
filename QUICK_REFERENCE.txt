@@ -1,0 +1,192 @@
+================================================================================
+🤖 TradingView Alert Setup GUI - QUICK REFERENCE CARD
+================================================================================
+
+⭐ IMMEDIATE ACTION (지금 바로):
+────────────────────────────────────────────────────────────────────────────
+1. 더블클릭: run_tradingview_gui.bat
+2. 프로그램 창이 열리면 성공! ✅
+
+================================================================================
+📋 PROGRAM TABS (프로그램 탭)
+================================================================================
+
+Tab 1️⃣: 📊 와치리스트 (MOST COMMON)
+──────────────────────────────────
+1. Input: BTCUSDT, ETHUSDT, AAPL, MSFT, GOOGL
+2. Click: "📖 종목 분석" (Parse)
+3. Click: "✓ 모두 선택" (Select All)
+4. Click: "🚀 알림 생성" (Generate Alerts)
+5. View: "📋 결과" tab for JSON
+
+Tab 2️⃣: ✏️ 수동 추가 (Manual)
+──────────────────────────────────
+1. Input: Single ticker (e.g., BTCUSDT)
+2. Select: BUY / SELL / BUY & SELL
+3. Click: "👁️ 미리보기" (Preview)
+4. Click: "📋 복사" (Copy to clipboard)
+5. Paste in TradingView with Ctrl+V
+
+Tab 3️⃣: 📋 결과 (Results)
+──────────────────────────────────
+- View all generated JSON alerts
+- Copy all to clipboard: "📋 모두 복사"
+- Save to file: "💾 파일 저장"
+
+Tab 4️⃣: ⚙️ 설정 (Settings)
+──────────────────────────────────
+- Webhook Secret: MySecret123456 (default)
+- Webhook URL: http://localhost:8000/webhook (default)
+- Click: "🔍 확인" (Validate)
+
+================================================================================
+💡 QUICK WORKFLOW (5분 완성)
+================================================================================
+
+Step 1: Run Program (1초)
+  → double-click: run_tradingview_gui.bat
+
+Step 2: Enter Tickers (1분)
+  → Tab 1 → Input box → BTCUSDT, ETHUSDT, AAPL
+
+Step 3: Parse & Generate (1분)
+  → Click: 📖 종목 분석
+  → Click: ✓ 모두 선택
+  → Click: 🚀 알림 생성
+
+Step 4: Copy JSON (1분)
+  → Tab 3 → Click: 📋 모두 복사
+  → Or: Tab 2 → Manual copy per ticker
+
+Step 5: Paste to TradingView (2분)
+  → TradingView alert setup
+  → Paste JSON with Ctrl+V
+  → Set webhook URL
+  → Click: Create
+
+================================================================================
+🔧 TROUBLESHOOTING (문제 해결)
+================================================================================
+
+Program won't open?
+  → Check Python: python --version
+  → Manual run: python scripts/tradingview_gui_ultra_simple.py
+
+Parse not working?
+  → Make sure you clicked: "📖 종목 분석"
+  → Check input has tickers (comma or newline separated)
+  → Click the button again
+
+Copy not working?
+  → First generate alerts: "🚀 알림 생성"
+  → Then copy: "📋 모두 복사" or "📋 복사"
+
+Settings validation fails?
+  → Enter webhook secret (or keep default)
+  → Enter webhook URL (or keep default)
+  → Click: "🔍 확인"
+
+================================================================================
+📝 JSON FORMAT (예시)
+================================================================================
+
+BUY Alert Example:
+{
+  "secret": "MySecret123456",
+  "action": "BUY",
+  "ticker": "BTCUSDT",
+  "price": "{{close}}",
+  "time": "{{timenow}}"
+}
+
+SELL Alert Example:
+{
+  "secret": "MySecret123456",
+  "action": "SELL",
+  "ticker": "BTCUSDT",
+  "price": "{{close}}",
+  "time": "{{timenow}}"
+}
+
+================================================================================
+⚙️ CONFIGURATION (설정)
+================================================================================
+
+Default Values:
+  - Webhook Secret: MySecret123456
+  - Webhook URL: http://localhost:8000/webhook
+
+To customize:
+  → Open Settings Tab (⚙️)
+  → Edit fields
+  → Click: 🔍 확인
+
+Custom Webhook URL examples:
+  Local: http://localhost:8000/webhook
+  Remote: https://your-domain.com/webhook
+
+================================================================================
+📁 FILES LOCATION
+================================================================================
+
+Main Program:
+  C:\Users\palet\Desktop\Factory\ib-trading-bot\run_tradingview_gui.bat
+
+Source Code:
+  C:\Users\palet\Desktop\Factory\ib-trading-bot\scripts\tradingview_gui_ultra_simple.py
+
+Guides:
+  - FINAL_STATUS_REPORT.md       (Complete guide)
+  - RUN_GUI_PROGRAM.md            (Detailed instructions)
+  - TROUBLESHOOTING.md            (Problem solving)
+  - FILE_ORGANIZATION.md          (File info)
+  - QUICK_REFERENCE.txt           (This file)
+
+================================================================================
+✨ KEY FEATURES
+================================================================================
+
+✅ No external dependencies (Tkinter only)
+✅ Windows UI (not CMD)
+✅ Beginner-friendly interface
+✅ Auto-parse watch list symbols
+✅ Batch generate BUY/SELL alerts
+✅ One-click clipboard copy
+✅ File save option
+✅ Settings validation
+✅ Automatic duplicate removal
+✅ Auto uppercase conversion
+
+================================================================================
+🚀 START NOW
+================================================================================
+
+1. Double-click: run_tradingview_gui.bat
+2. Input tickers
+3. Click 3 buttons (분석 → 모두선택 → 생성)
+4. Copy JSON to TradingView
+5. Done! ✅
+
+================================================================================
+📞 SUPPORT
+================================================================================
+
+Need help?
+  → Check: FINAL_STATUS_REPORT.md (Problem Solving section)
+  → Check: TROUBLESHOOTING.md
+  → Check: RUN_GUI_PROGRAM.md
+
+Found a bug?
+  → Run manually: python scripts/tradingview_gui_ultra_simple.py
+  → Check error message
+  → Verify Python is installed: python --version
+
+================================================================================
+
+Last Updated: 2026-02-19
+Status: ✅ READY TO USE
+Version: Ultra Simple v3
+
+모든 준비가 완료되었습니다! 프로그램을 실행하세요! 🚀
+
+================================================================================

@@ -1,0 +1,100 @@
+version: "3.8"
+
+services:
+  # === FastAPI Webhook Server ===
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - ./app:/app/app
+    networks:
+      - trading-net
+
+  # === Order Queue Worker ===
+  worker:
+    build: .
+    command: python -m app.queue.order_worker
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - ./app:/app/app
+    networks:
+      - trading-net
+
+  # === Telegram Bot ===
+  telegram:
+    build: .
+    command: python -m app.notifications.telegram_bot
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - ./app:/app/app
+    networks:
+      - trading-net
+
+  # === PostgreSQL ===
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tradingbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-tradingbot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tradingbot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trading-net
+
+  # === Redis ===
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trading-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  trading-net:
+    driver: bridge

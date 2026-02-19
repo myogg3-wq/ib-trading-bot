@@ -1,0 +1,35 @@
+# Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# IB Gateway Connection
+ib_async==1.0.3
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+
+# Redis Queue
+redis[hiredis]==5.2.1
+arq==0.26.1
+
+# Telegram Bot
+python-telegram-bot==21.9
+
+# Configuration
+pydantic-settings==2.7.1
+
+# Scheduling
+apscheduler==3.11.0
+
+# Utilities
+httpx==0.28.1
+python-dateutil==2.9.0
+pytz==2024.2
+
+# Security
+python-jose[cryptography]==3.3.0
+
+# Logging
+structlog==24.4.0
