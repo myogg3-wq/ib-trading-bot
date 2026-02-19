@@ -6,7 +6,7 @@ Runtime settings are stored in DB and changeable via Telegram.
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 
 class Settings(BaseSettings):
@@ -62,11 +62,11 @@ class Settings(BaseSettings):
         """Parse comma-separated TV IPs into a list."""
         return [ip.strip() for ip in self.tv_allowed_ips.split(",") if ip.strip()]
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "extra": "ignore"  # 이 줄 추가 - 정의되지 않은 환경변수 무시
-    }
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 
 # Singleton
