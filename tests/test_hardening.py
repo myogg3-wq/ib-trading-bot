@@ -2,6 +2,7 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from app.config import settings
 from app.queue import order_queue
 from app.broker.market_hours import get_et_day_bounds_utc, get_et_week_bounds_utc
 from app.gateway.security import check_timestamp_freshness
@@ -15,6 +16,15 @@ from app.queue.order_queue import (
 
 
 class SecurityTests(unittest.TestCase):
+    def test_tradingview_allowlist_includes_current_official_ips(self):
+        expected = {
+            "52.89.214.238",
+            "34.212.75.30",
+            "54.218.53.128",
+            "52.32.178.7",
+        }
+        self.assertTrue(expected.issubset(set(settings.tv_ip_list)))
+
     def test_timestamp_freshness_rejects_stale_epoch(self):
         stale_epoch = str(time.time() - 600)
         self.assertFalse(check_timestamp_freshness(stale_epoch, max_age_seconds=60))
