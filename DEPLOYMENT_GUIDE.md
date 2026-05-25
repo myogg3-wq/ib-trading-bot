@@ -480,10 +480,10 @@ docker-compose logs postgres
 # Verify token in .env
 TELEGRAM_BOT_TOKEN=
 
-# Verify chat ID in .env
+ Verify chat ID in .env
 TELEGRAM_CHAT_ID=
 
-# Restart bot
+ Restart bot
 docker-compose restart telegram
 # or
 sudo systemctl restart ib-bot-telegram

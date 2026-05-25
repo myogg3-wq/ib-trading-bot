@@ -9,7 +9,7 @@ set -e
 ENV_FILE=".env"
 
 echo "============================================"
-echo "  IB Trading Bot — .env Setup"
+echo "  Trading Bot — .env Setup"
 echo "============================================"
 echo ""
 
@@ -29,6 +29,18 @@ IB_PORT=${IB_PORT:-4002}
 
 read -p "IB Client ID [1]: " IB_CLIENT_ID
 IB_CLIENT_ID=${IB_CLIENT_ID:-1}
+
+# --- Broker Routing ---
+echo ""
+echo "--- Broker Routing ---"
+read -p "Broker mode (ib_only/kis_only/dual_failover) [kis_only]: " BROKER_MODE
+BROKER_MODE=${BROKER_MODE:-kis_only}
+
+read -p "Primary broker (ib/kis) [kis]: " PRIMARY_BROKER
+PRIMARY_BROKER=${PRIMARY_BROKER:-kis}
+
+read -p "Secondary broker (ib/kis) [ib]: " SECONDARY_BROKER
+SECONDARY_BROKER=${SECONDARY_BROKER:-ib}
 
 # --- Webhook ---
 echo ""
@@ -93,6 +105,11 @@ cat > "$ENV_FILE" << EOF
 IB_HOST=$IB_HOST
 IB_PORT=$IB_PORT
 IB_CLIENT_ID=$IB_CLIENT_ID
+
+# === Broker Routing ===
+BROKER_MODE=$BROKER_MODE
+PRIMARY_BROKER=$PRIMARY_BROKER
+SECONDARY_BROKER=$SECONDARY_BROKER
 
 # === Webhook Security ===
 WEBHOOK_SECRET=$WEBHOOK_SECRET

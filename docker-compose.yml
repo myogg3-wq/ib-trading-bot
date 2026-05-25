@@ -1,12 +1,12 @@
-version: "3.8"
-
 services:
   # === FastAPI Webhook Server ===
   api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    environment:
+      IB_CLIENT_ID: ${IB_CLIENT_ID_API:-91}
     env_file:
       - .env
     depends_on:
@@ -24,6 +24,8 @@ services:
   worker:
     build: .
     command: python -m app.queue.order_worker
+    environment:
+      IB_CLIENT_ID: ${IB_CLIENT_ID_WORKER:-92}
     env_file:
       - .env
     depends_on:
@@ -58,13 +60,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: tradingbot
-      POSTGRES_PASSWORD: tradingbot123
-      POSTGRES_DB: tradingbot
+      POSTGRES_USER: ${POSTGRES_USER:-tradingbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tradingbot}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tradingbot}"]
@@ -81,7 +83,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

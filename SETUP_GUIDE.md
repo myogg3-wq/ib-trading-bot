@@ -84,7 +84,7 @@ nano ~/ibc/config.ini
 Change these lines:
 ```
 IbLoginId=YOUR_IB_USERNAME
-IbPassword=YOUR_IB_PASSWORD
+Ib
 TradingMode=paper          # Start with paper! Change to 'live' later
 ```
 

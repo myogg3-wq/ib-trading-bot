@@ -10,6 +10,10 @@ import structlog
 from app.config import settings
 from app.models.base import Base
 from app.models.settings import BotSettings
+from app.models.position import Position  # noqa: F401
+from app.models.trade import Trade  # noqa: F401
+from app.models.alert_log import AlertLog  # noqa: F401
+from app.models.portfolio_snapshot import PortfolioSnapshot  # noqa: F401
 
 logger = structlog.get_logger()
 

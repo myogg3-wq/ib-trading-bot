@@ -4,6 +4,7 @@ Records every individual order execution for audit trail.
 """
 
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Float, Integer, DateTime, Enum as SAEnum, Index
 from sqlalchemy.orm import Mapped, mapped_column
 import enum
@@ -35,37 +36,37 @@ class Trade(Base):
     order_type: Mapped[str] = mapped_column(String(10), default="MKT", nullable=False)
 
     # Execution details
-    requested_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
-    filled_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
-    requested_amount_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    avg_fill_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    total_fill_amount_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    commission: Mapped[float | None] = mapped_column(Float, nullable=True)
+    requested_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    filled_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    requested_amount_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    avg_fill_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_fill_amount_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    commission: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # IB references
-    ib_order_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    ib_perm_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ib_order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ib_perm_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Status
     status: Mapped[TradeStatus] = mapped_column(
         SAEnum(TradeStatus), default=TradeStatus.PENDING, nullable=False
     )
-    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Linked positions (for SELL, comma-separated position IDs)
-    position_ids: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    position_ids: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
 
     # P&L (for SELL trades)
-    total_pnl_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_pnl_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Alert reference
-    alert_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    alert_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
-    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    filled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_trades_ticker_side", "ticker", "side"),

@@ -3,7 +3,7 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 
 # IB Gateway Connection
-ib_async==1.0.3
+ib-insync==0.9.86
 
 # Database
 sqlalchemy[asyncio]==2.0.36
@@ -27,6 +27,8 @@ apscheduler==3.11.0
 httpx==0.28.1
 python-dateutil==2.9.0
 pytz==2024.2
+tzdata==2025.2
+numpy<2
 
 # Security
 python-jose[cryptography]==3.3.0

@@ -88,7 +88,7 @@ Comprehensive troubleshooting guide for common issues.
    # Check in .env
    grep TELEGRAM_BOT_TOKEN .env
 
-   # Token should look like: 123456789:ABCDefGHIJKLmnoPQRStuvwxyz-1234567890
+   # Token should look like: [REDACTED_TELEGRAM_BOT_TOKEN]
    ```
 
 2. **Verify chat ID:**
@@ -271,7 +271,7 @@ Comprehensive troubleshooting guide for common issues.
 2. **Verify connection string:**
    ```bash
    # .env should have
-   DATABASE_URL=postgresql+asyncpg://tradingbot:password@localhost:5432/tradingbot
+   DATABASE_URL=postgresql+asyncpg://tradingbot:<DB_PASSWORD>@localhost:5432/tradingbot
 
    # Test connection
    psql -h localhost -U tradingbot -d tradingbot -c "SELECT 1"
@@ -416,7 +416,7 @@ Comprehensive troubleshooting guide for common issues.
    {"secret": "YOUR_SECRET", ...}
 
    Bot .env:
-   WEBHOOK_SECRET=YOUR_SECRET
+   WEBHOOK_SECRET=
 
    Must be EXACTLY the same!
    ```
@@ -468,7 +468,7 @@ Comprehensive troubleshooting guide for common issues.
 
 2. **Use simple secret (alphanumeric):**
    ```
-   WEBHOOK_SECRET=MySecureKey123456
+   WEBHOOK_SECRET=
    # Avoid special chars like @, $, !, etc.
    ```
 

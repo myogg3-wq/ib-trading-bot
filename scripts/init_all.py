@@ -26,6 +26,16 @@ import structlog
 logger = structlog.get_logger()
 
 
+def docker_host_hint(error: Exception, service_name: str) -> str:
+    """Provide actionable hint for common local-vs-docker hostname mistakes."""
+    text = str(error)
+    if "nodename nor servname provided" in text and service_name in ("db", "redis"):
+        if service_name == "db":
+            return " (docker 외부 실행 중이면 DATABASE_URL host를 localhost로 설정하세요)"
+        return " (docker 외부 실행 중이면 REDIS_URL host를 localhost로 설정하세요)"
+    return ""
+
+
 async def test_postgres() -> bool:
     """Test PostgreSQL connection."""
     print("🔹 Testing PostgreSQL...")
@@ -36,7 +46,7 @@ async def test_postgres() -> bool:
         print(f"   Default settings: {settings_obj}")
         return True
     except Exception as e:
-        print(f"❌ PostgreSQL failed: {e}")
+        print(f"❌ PostgreSQL failed: {e}{docker_host_hint(e, 'db')}")
         return False
 
 
@@ -49,7 +59,7 @@ async def test_redis() -> bool:
         print(f"✅ Redis OK")
         return True
     except Exception as e:
-        print(f"❌ Redis failed: {e}")
+        print(f"❌ Redis failed: {e}{docker_host_hint(e, 'redis')}")
         return False
 
 

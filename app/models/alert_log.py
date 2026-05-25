@@ -4,6 +4,7 @@ Records every incoming webhook alert for debugging and audit.
 """
 
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Float, Integer, DateTime, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,31 +19,31 @@ class AlertLog(Base):
     # Alert content
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY or SELL
-    price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    alert_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    alert_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Raw payload for debugging
-    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Source info
-    source_ip: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source_ip: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Processing status
     processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     queued: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     skipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    skip_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    skip_reason: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Timing
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
-    processed_at: Mapped[datetime | None] = mapped_column(
+    processed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # Idempotency
-    idempotency_key: Mapped[str | None] = mapped_column(
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True, unique=True, index=True
     )
 

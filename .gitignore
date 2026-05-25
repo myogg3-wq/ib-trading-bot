@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.production
+.env.backup*
 
 # Python
 __pycache__/
@@ -33,6 +34,23 @@ docker-compose.override.yml
 # Logs
 logs/
 *.log
+tests/.tmp_platform_community.json
+tests/.tmp_kis_access_token.json
+
+# Runtime/test artifacts
+.runtime/
+output/
+runtime/deploy_backups/
+playwright-report/
+test-results/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.playwright-cli/
+node_modules/
+NUL
+*.tgz
+*.tar.gz
 
 # Database
 *.db

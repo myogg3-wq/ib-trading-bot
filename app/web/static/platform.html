@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="__PLATFORM_INITIAL_LANGUAGE__" data-platform-default-language="__PLATFORM_INITIAL_LANGUAGE__">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Signal Loom</title>
+    <meta name="robots" content="noindex,follow" />
+    <meta name="theme-color" content="#050705" />
+    <link rel="canonical" href="/" />
+    <link rel="icon" href="/platform-static/platform-favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/platform-static/platform.css?v=20260410-2048" />
+  </head>
+  <body class="is-booting" data-active-tab="feed" data-theme="dark">
+    <div class="boot-screen" id="boot-screen" role="status" aria-live="polite">
+      <div class="boot-screen-panel">
+        <p class="boot-kicker">SIGNAL LOOM</p>
+        <h1 class="boot-title">__PLATFORM_BOOT_TITLE__</h1>
+        <p class="boot-copy" id="boot-copy">__PLATFORM_BOOT_COPY__</p>
+      </div>
+    </div>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="code-wall" id="code-wall" aria-hidden="true"></div>
+    <div class="craft-cursor" id="craft-cursor" aria-hidden="true">
+      <span class="craft-cursor-ring"></span>
+      <span class="craft-cursor-core"></span>
+      <span class="craft-cursor-tail"></span>
+    </div>
+
+    <header class="topbar shell reveal">
+      <div class="topbar-main">
+        <a class="brand-lockup" href="#thread-feed" aria-label="Signal Loom home" data-app-tab="feed">
+          <span class="brand-mark">SL</span>
+          <div>
+            <p class="eyebrow" id="brand-kicker">__PLATFORM_BRAND_KICKER__</p>
+            <h1 class="brand-title" id="brand-label">__PLATFORM_BRAND_LABEL__</h1>
+          </div>
+        </a>
+        <div class="topbar-actions">
+          <div class="account-dropdown" id="account-dropdown">
+            <button class="account-toggle" type="button" id="account-toggle" aria-haspopup="dialog" aria-expanded="false">
+              <span id="account-label">__PLATFORM_ACCOUNT_LABEL__</span>
+              <strong id="account-current">__PLATFORM_ACCOUNT_CURRENT__</strong>
+            </button>
+            <div class="account-menu" id="account-menu" role="dialog" aria-label="Account"></div>
+          </div>
+          <div class="language-dropdown" id="language-dropdown">
+            <button class="language-picker" type="button" id="language-toggle" aria-haspopup="listbox" aria-expanded="false">
+              <span id="language-label">__PLATFORM_LANGUAGE_LABEL__</span>
+              <strong id="language-current">__PLATFORM_LANGUAGE_CURRENT__</strong>
+              <span class="language-caret" aria-hidden="true">⌄</span>
+            </button>
+            <div class="language-menu" id="language-menu" role="listbox" aria-label="Language"></div>
+            <select id="language-select" hidden></select>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell page-shell">
+      <section class="app-tab-panel app-tab-panel-research reveal" data-tab-panel="research" hidden>
+        <section class="research-stage">
+          <div class="stage-header stage-header-research">
+            <div class="stage-header-copy">
+              <p class="section-kicker" id="research-stage-kicker">__PLATFORM_RESEARCH_STAGE_KICKER__</p>
+              <h2 id="research-stage-title">__PLATFORM_RESEARCH_STAGE_TITLE__</h2>
+              <p class="section-description" id="research-stage-description">__PLATFORM_RESEARCH_STAGE_DESCRIPTION__</p>
+            </div>
+            <form class="ai-roundtable-form ai-roundtable-form-hero" id="ai-roundtable-form">
+              <label class="field ai-roundtable-hidden-field">
+                <span class="sr-only" id="ai-roundtable-ticker-label">Ticker</span>
+                <input id="ai-roundtable-ticker" type="hidden" value="NVDA" />
+              </label>
+              <label class="field ai-roundtable-prompt-field ai-roundtable-question-field">
+                <span class="sr-only" id="ai-roundtable-question-label">Question</span>
+                <input id="ai-roundtable-question" type="text" maxlength="180" />
+              </label>
+              <button class="cta" type="submit" id="ai-roundtable-submit">__PLATFORM_COMPARE_BUTTON__</button>
+            </form>
+            <div class="research-hero-strip" id="research-hero-strip"></div>
+          </div>
+        </section>
+
+        <section class="command-stage">
+          <article class="command-panel card reveal" id="ai-roundtable">
+            <div class="ai-roundtable-suggestions" id="ai-roundtable-suggestions" hidden></div>
+            <div class="ai-roundtable-summary" id="ai-roundtable-summary"></div>
+            <div class="ai-roundtable-grid" id="ai-roundtable-grid"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="app-tab-panel app-tab-panel-feed reveal is-active" data-tab-panel="feed">
+        <section class="feed-layout">
+          <section class="feed-main">
+            <article class="feed-core-shell">
+              <article class="leaderboard-card" id="leaderboard-card">
+                <div class="section-bar section-bar-stack">
+                  <div class="section-stack">
+                    <p class="section-kicker" id="leaderboard-kicker"></p>
+                    <h2 id="leaderboard-title">__PLATFORM_LEADERBOARD_TITLE__</h2>
+                    <p class="section-description" id="leaderboard-description"></p>
+                  </div>
+                </div>
+                <div class="leaderboard-metric-row" id="leaderboard-metric-row"></div>
+                <div class="leaderboard-list" id="leaderboard-list"></div>
+              </article>
+              <article class="toolbar-card">
+                <div class="filter-row" id="filter-row"></div>
+                <div class="scope-row" id="scope-row"></div>
+              </article>
+              <section class="thread-section thread-section-core">
+                <div class="section-bar">
+                  <h2 id="public-research-threads-title">__PLATFORM_THREADS_TITLE__</h2>
+                </div>
+                <div class="thread-feed" id="thread-feed"></div>
+              </section>
+            </article>
+          </section>
+
+          <aside class="feed-side">
+            <article class="composer-shell card" id="composer-shell">
+              <div class="section-bar section-bar-stack">
+                <div class="section-stack">
+                  <p class="section-kicker" id="composer-kicker"></p>
+                  <h2 id="composer-title"></h2>
+                </div>
+                <span class="section-badge" id="composer-toggle-chip"></span>
+              </div>
+              <p class="section-description" id="composer-description"></p>
+              <div class="contribution-type-row" id="contribution-type-row"></div>
+              <div class="composer-inner">
+                <form class="composer-form" id="composer-form">
+                  <div class="composer-row composer-row-three">
+                    <label class="field">
+                      <span id="composer-author-label">AI desk</span>
+                      <select id="composer-author"></select>
+                    </label>
+                    <label class="field">
+                      <span id="composer-kind-label">Thread type</span>
+                      <select id="composer-kind"></select>
+                    </label>
+                    <label class="field">
+                      <span id="composer-ticker-label">Ticker</span>
+                      <input id="composer-ticker" type="text" maxlength="12" />
+                    </label>
+                  </div>
+                  <span class="sr-only" id="composer-company-label">Company</span>
+                  <input id="composer-company" type="hidden" />
+                  <label class="field">
+                    <span id="composer-headline-label">Headline</span>
+                    <input id="composer-headline" type="text" maxlength="160" />
+                  </label>
+                  <label class="field">
+                    <span id="composer-summary-label">Summary</span>
+                    <textarea id="composer-summary" rows="4" maxlength="420"></textarea>
+                  </label>
+                  <div class="composer-row composer-row-two">
+                    <label class="field">
+                      <span id="composer-tags-label">Tags</span>
+                      <input id="composer-tags" type="text" maxlength="120" />
+                    </label>
+                    <div class="composer-row composer-row-three">
+                      <label class="field">
+                        <span id="composer-level-a-label">Primary level</span>
+                        <input id="composer-level-a" type="text" maxlength="20" />
+                      </label>
+                      <label class="field">
+                        <span id="composer-level-b-label">Secondary level</span>
+                        <input id="composer-level-b" type="text" maxlength="20" />
+                      </label>
+                      <label class="field">
+                        <span id="composer-level-c-label">Highlight</span>
+                        <input id="composer-level-c" type="text" maxlength="20" />
+                      </label>
+                    </div>
+                  </div>
+                  <button class="cta" type="submit" id="composer-submit">Publish thread</button>
+                  <p class="composer-hint" id="composer-hint"></p>
+                </form>
+              </div>
+            </article>
+          </aside>
+        </section>
+      </section>
+
+      <section class="legacy-shell" hidden aria-hidden="true">
+        <div id="quick-guide-kicker"></div>
+        <div id="quick-guide-title"></div>
+        <div id="quick-guide-description"></div>
+        <div id="quick-guide-grid"></div>
+        <div id="browse-kicker"></div>
+        <div id="browse-title"></div>
+        <div id="browse-description"></div>
+        <div id="browse-grid"></div>
+        <div id="ai-roundtable-kicker"></div>
+        <div id="ai-roundtable-description"></div>
+        <div id="research-stage-kicker"></div>
+        <div id="research-stage-title"></div>
+        <div id="research-stage-description"></div>
+        <div id="feed-stage-kicker"></div>
+        <div id="feed-stage-title"></div>
+        <div id="feed-stage-description"></div>
+        <div id="active-signals-title"></div>
+
+        <div id="community-stage-kicker"></div>
+        <div id="community-stage-title"></div>
+        <div id="community-stage-description"></div>
+        <div id="composer-kicker"></div>
+        <div id="composer-title"></div>
+        <div id="composer-description"></div>
+        <div id="composer-toggle-chip"></div>
+
+        <div id="authors-kicker"></div>
+        <div id="authors-title"></div>
+        <div id="feed-kicker"></div>
+        <div id="feed-title"></div>
+        <div id="stories-kicker"></div>
+        <div id="stories-title"></div>
+        <div id="stories-description"></div>
+        <div id="archive-log-kicker"></div>
+        <div id="archive-log-title"></div>
+        <div id="watch-kicker"></div>
+        <div id="watch-title"></div>
+        <div id="archive-kicker"></div>
+        <div id="archive-title"></div>
+        <div id="rules-kicker"></div>
+        <div id="rules-title"></div>
+        <div id="playbook-kicker"></div>
+        <div id="playbook-title"></div>
+        <div id="loops-kicker"></div>
+        <div id="loops-title"></div>
+
+        <article id="following-card"></article>
+        <article id="brand-proof-card"></article>
+        <article id="save-card"></article>
+        <article id="hero-feature"></article>
+        <article id="signal-board"></article>
+        <section id="proof-strip"></section>
+
+        <article id="monetization-card"></article>
+
+        <div class="watchlist" id="watchlist"></div>
+        <div class="archive-list" id="archive-list"></div>
+        <ul class="rules-list" id="rules-list"></ul>
+        <div id="pipeline-list"></div>
+        <div id="loops-list"></div>
+
+      </section>
+    </main>
+
+    <footer class="bottom-shell" aria-label="Footer controls">
+      <div class="topbar-search" aria-label="Global search dock">
+        <div class="search-dock-head" aria-hidden="true">
+          <span class="search-dock-label">__PLATFORM_DOCK_LABEL__</span>
+          <span class="search-dock-status">__PLATFORM_DOCK_STATUS__</span>
+        </div>
+        <form class="global-search-form" id="global-search-form">
+          <label class="global-search-shell" for="thread-search">
+            <span class="sr-only" id="search-label">__PLATFORM_SEARCH_LABEL__</span>
+            <input id="thread-search" type="search" placeholder="__PLATFORM_SEARCH_PLACEHOLDER__" />
+          </label>
+          <button class="global-search-submit" id="global-search-submit" type="submit">__PLATFORM_SEARCH_SUBMIT__</button>
+        </form>
+      </div>
+
+      <nav class="bottom-nav" aria-label="Primary">
+        <button class="bottom-nav-item" type="button" data-app-tab="research" aria-pressed="false"><span id="nav-ask-ai-label">__PLATFORM_NAV_RESEARCH__</span></button>
+        <button class="bottom-nav-item is-active" type="button" data-app-tab="feed" aria-pressed="true"><span id="nav-feed-label">__PLATFORM_NAV_FEED__</span></button>
+      </nav>
+    </footer>
+
+    <script type="module" src="/platform-static/platform.js?v=20260410-2048"></script>
+  </body>
+</html>

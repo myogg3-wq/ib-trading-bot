@@ -65,7 +65,7 @@ Comprehensive verification completed across **10,000+ inspection points** coveri
 - **Environment Variables**: ✅ All from .env file
 - **Secret Locations**:
   - IB Gateway credentials: from .env
-  - PostgreSQL password: from .env
+  - PostgreSQL
   - Telegram token: from .env
   - Webhook secret: from .env
 
@@ -357,4 +357,3 @@ This comprehensive verification confirms that the IB Trading Bot system:
 Generated: 2026-02-19
 Verification Method: Comprehensive automated code analysis + manual inspection
 Total Time: Complete system review across 3,386 lines of code and 30+ files
-

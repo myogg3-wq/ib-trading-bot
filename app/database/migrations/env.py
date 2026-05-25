@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 from app.models.base import Base
-from app.models import Position, Trade, AlertLog, BotSettings
+from app.models import Position, Trade, AlertLog, BotSettings, PortfolioSnapshot
 
 config = context.config
 if config.config_file_name is not None:

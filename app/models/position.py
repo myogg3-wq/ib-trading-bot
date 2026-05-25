@@ -5,6 +5,7 @@ Supports multiple positions per ticker (duplicate buys).
 """
 
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Float, Integer, DateTime, Enum as SAEnum, Index
 from sqlalchemy.orm import Mapped, mapped_column
 import enum
@@ -32,13 +33,13 @@ class Position(Base):
     entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # Exit details (filled on SELL)
-    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    exit_amount_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    exit_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    exit_amount_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    exit_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # P&L (filled on SELL)
-    pnl_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnl_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pnl_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Status
     status: Mapped[PositionStatus] = mapped_column(
@@ -46,8 +47,8 @@ class Position(Base):
     )
 
     # IB order IDs
-    entry_order_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    exit_order_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    entry_order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    exit_order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

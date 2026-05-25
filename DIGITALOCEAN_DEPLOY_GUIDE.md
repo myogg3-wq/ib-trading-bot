@@ -167,10 +167,10 @@ nano .env
 다음이 있는지 확인:
 
 ```
-WEBHOOK_SECRET=MySecret123456
+WEBHOOK_SECRET=
 WEBHOOK_PORT=8000
-TELEGRAM_BOT_TOKEN=your_token
-TELEGRAM_CHAT_ID=your_chat_id
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
 저장: `Ctrl+X` → `Y` → `Enter`
