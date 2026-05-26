@@ -198,6 +198,32 @@ class KISDomesticSellProtectionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class KISOverseasOrderRoutingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_symbol_balance_searches_exchange_candidates(self):
+        client = KISClient()
+        seen_exchanges = []
+
+        async def fake_balance(exchange_code=None, currency_code=None):
+            seen_exchanges.append(exchange_code)
+            if exchange_code == "AMEX":
+                return [
+                    {
+                        "ovrs_pdno": "XHE",
+                        "ovrs_cblc_qty": "1",
+                        "ord_psbl_qty": "1",
+                        "pchs_avg_pric": "78.7499",
+                    }
+                ]
+            return []
+
+        client.get_overseas_balance = AsyncMock(side_effect=fake_balance)
+
+        result = await client.get_symbol_balance("XHE")
+
+        self.assertEqual(result["qty"], 1)
+        self.assertEqual(result["orderable_qty"], 1)
+        self.assertEqual(result["avg_price"], 78.7499)
+        self.assertIn("AMEX", seen_exchanges)
+
     async def test_direct_order_resolves_exchange_before_order_payload(self):
         client = KISClient()
         client._authorized_headers = AsyncMock(return_value={})
