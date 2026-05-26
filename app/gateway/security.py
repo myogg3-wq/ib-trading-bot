@@ -5,6 +5,7 @@ Webhook security: HMAC verification, IP whitelist, rate limiting, idempotency.
 import hashlib
 import hmac
 import time
+from datetime import datetime, timezone
 from fastapi import Request, HTTPException
 import structlog
 
@@ -31,6 +32,9 @@ def verify_source_ip(client_ip: str) -> bool:
     Check if the request comes from TradingView's known IP addresses.
     Also allows localhost for testing.
     """
+    if settings.webhook_allow_any_ip:
+        return True
+
     allowed = settings.tv_ip_list + ["127.0.0.1", "::1", "localhost"]
     return client_ip in allowed
 
@@ -42,8 +46,13 @@ async def validate_webhook_request(request: Request) -> bytes:
     """
     # 1. Get client IP
     client_ip = request.client.host if request.client else "unknown"
-    forwarded_for = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-    source_ip = forwarded_for or client_ip
+
+    # Trust X-Forwarded-For only from known reverse proxies.
+    source_ip = client_ip
+    if client_ip in settings.trusted_proxy_ip_list:
+        forwarded_for = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if forwarded_for:
+            source_ip = forwarded_for
 
     # 2. IP whitelist check
     if not verify_source_ip(source_ip):
@@ -87,7 +96,14 @@ def check_timestamp_freshness(timestamp_str: str, max_age_seconds: int = 60) -> 
     """
     Check if the alert timestamp is recent enough.
     Rejects stale alerts to prevent replay attacks.
+
+    Missing timestamps are handled by the webhook handler for TradingView
+    compatibility. If a timestamp is supplied here, it must be parseable.
     """
+    timestamp_str = str(timestamp_str or "").strip()
+    if not timestamp_str:
+        return False
+
     try:
         # TradingView sends timestamps in various formats
         # Try epoch seconds first
@@ -95,5 +111,16 @@ def check_timestamp_freshness(timestamp_str: str, max_age_seconds: int = 60) -> 
         now = time.time()
         return abs(now - alert_time) < max_age_seconds
     except (ValueError, TypeError):
-        # If not a numeric timestamp, allow it (TV format varies)
-        return True
+        pass
+
+    try:
+        # ISO8601 fallback (e.g. 2026-02-25T15:22:10Z)
+        normalized = timestamp_str.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        return abs((now_utc - parsed.astimezone(timezone.utc)).total_seconds()) < max_age_seconds
+    except Exception:
+        logger.warning("Rejected webhook timestamp with unsupported format", timestamp=timestamp_str)
+        return False

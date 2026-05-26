@@ -18,9 +18,9 @@ nano .env
 ```
 IB_HOST=127.0.0.1          # or your VPS IP
 IB_PORT=4002               # Paper trading
-WEBHOOK_SECRET=MySecret123 # Any strong value
-TELEGRAM_BOT_TOKEN=xxx
-TELEGRAM_CHAT_ID=123456789
+WEBHOOK_SECRET= # Any strong value
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 DATABASE_URL=...           # Or keep default for docker
 REDIS_URL=...              # Or keep default for docker
 ```

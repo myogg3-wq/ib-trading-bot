@@ -106,9 +106,9 @@ Step 1: Clone repository to VPS
 Step 2: Configure .env file
   Edit .env with:
   - IB_PORT=4001 (for live trading) or 4002 (for paper)
-  - TELEGRAM_BOT_TOKEN=<your_token>
-  - TELEGRAM_CHAT_ID=<your_chat_id>
-  - WEBHOOK_SECRET=MySecret123456 (or change it)
+  - TELEGRAM_BOT_TOKEN=
+  - TELEGRAM_CHAT_ID=
+  - WEBHOOK_SECRET= (or change it)
 
 Step 3: Start all containers
   $ docker-compose up -d
@@ -240,7 +240,7 @@ Trading Defaults (in .env, but adjustable via Telegram):
   DEFAULT_MIN_CASH_RESERVE=1000
 
 Webhook Security (in .env):
-  WEBHOOK_SECRET=MySecret123456
+  WEBHOOK_SECRET=
   TV_ALLOWED_IPS=52.89.214.238,34.212.75.30,34.222.187.21,52.32.178.7
 
 Market Hours (hardcoded, US Eastern):

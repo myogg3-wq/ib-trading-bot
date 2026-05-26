@@ -1,62 +1,64 @@
-"""
-Health check script.
-Can be called by UptimeRobot or cron to verify system is running.
+"""Manual website and infrastructure health check script."""
 
-Usage:
-    python -m scripts.health_check
-"""
+from __future__ import annotations
 
+import argparse
 import asyncio
-import sys
 import os
+import sys
+
 import httpx
+from sqlalchemy import text
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.config import settings
+from app.web.site_monitor import collect_site_report, summarize_report
 
-async def check_health():
-    """Check all system components."""
+
+async def check_health(*, notify: bool = False) -> int:
+    """Check core system components and the public site."""
     results = {}
 
-    # 1. Check FastAPI
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get("http://localhost:8000/health", timeout=5)
+            resp = await client.get(f"{settings.site_monitor_base_url.rstrip('/')}/health", timeout=5)
             results["api"] = "OK" if resp.status_code == 200 else f"FAIL ({resp.status_code})"
     except Exception as e:
         results["api"] = f"FAIL ({str(e)})"
 
-    # 2. Check Redis
     try:
         import redis.asyncio as redis
-        r = redis.from_url("redis://localhost:6379/0")
-        await r.ping()
+
+        redis_client = redis.from_url(settings.redis_url)
+        await redis_client.ping()
         results["redis"] = "OK"
-        await r.close()
+        await redis_client.aclose()
     except Exception as e:
         results["redis"] = f"FAIL ({str(e)})"
 
-    # 3. Check PostgreSQL
     try:
         from app.database.connection import get_session
+
         async with get_session() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
         results["postgres"] = "OK"
     except Exception as e:
         results["postgres"] = f"FAIL ({str(e)})"
 
-    # 4. Check IB Gateway
     try:
         from app.broker.ib_client import get_ib_client
+
         ib = await get_ib_client()
         results["ib_gateway"] = "OK" if ib.is_connected else "DISCONNECTED"
     except Exception as e:
         results["ib_gateway"] = f"FAIL ({str(e)})"
 
-    # Print results
-    print("=" * 40)
-    print("Health Check Results")
-    print("=" * 40)
+    site_report = await collect_site_report()
+
+    print("=" * 48)
+    print("Infrastructure Health")
+    print("=" * 48)
 
     all_ok = True
     for component, status in results.items():
@@ -65,12 +67,29 @@ async def check_health():
         if status != "OK":
             all_ok = False
 
-    print("=" * 40)
-    print(f"Overall: {'ALL OK' if all_ok else 'ISSUES FOUND'}")
+    print()
+    print("=" * 48)
+    print("Website Health")
+    print("=" * 48)
+    print(summarize_report(site_report))
 
-    return 0 if all_ok else 1
+    if notify:
+        from app.notifications.telegram_bot import send_notification
+
+        await send_notification(summarize_report(site_report))
+
+    overall_ok = all_ok and site_report["overall_status"] == "healthy"
+    print("=" * 48)
+    print(f"Overall: {'ALL OK' if overall_ok else 'ISSUES FOUND'}")
+    return 0 if overall_ok else 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run infrastructure and website health checks.")
+    parser.add_argument("--notify", action="store_true", help="Send the site report to Telegram.")
+    args = parser.parse_args()
+    return asyncio.run(check_health(notify=args.notify))
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(check_health())
-    sys.exit(exit_code)
+    sys.exit(main())

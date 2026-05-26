@@ -1,9 +1,10 @@
 """
-IB Gateway connection manager using ib_async.
+IB Gateway connection manager using ib_insync.
 Handles connection, auto-reconnection, and connection state monitoring.
 """
 
 import asyncio
+import math
 from datetime import datetime, timezone
 from typing import Optional
 import structlog
@@ -19,7 +20,7 @@ _connection_lock = asyncio.Lock()
 
 class IBClient:
     """
-    Manages connection to IB Gateway via ib_async.
+    Manages connection to IB Gateway via ib_insync.
     Features:
     - Auto-reconnect on disconnect
     - Connection state monitoring
@@ -33,6 +34,8 @@ class IBClient:
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 50
         self._reconnect_delay = 5  # seconds
+        self._disconnect_handler_registered = False
+        self._reconnect_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> bool:
         """
@@ -40,7 +43,7 @@ class IBClient:
         Returns True if connected successfully.
         """
         try:
-            from ib_async import IB
+            from ib_insync import IB
 
             if self.ib is None:
                 self.ib = IB()
@@ -64,7 +67,9 @@ class IBClient:
             )
 
             # Set up disconnect handler
-            self.ib.disconnectedEvent += self._on_disconnect
+            if not self._disconnect_handler_registered:
+                self.ib.disconnectedEvent += self._on_disconnect
+                self._disconnect_handler_registered = True
 
             self._connected = True
             self._last_connected_at = datetime.now(timezone.utc)
@@ -78,11 +83,23 @@ class IBClient:
             logger.error("Failed to connect to IB Gateway", error=str(e))
             return False
 
-    async def _on_disconnect(self):
-        """Handle IB Gateway disconnection."""
+    def _on_disconnect(self):
+        """
+        Handle IB Gateway disconnection.
+
+        ib_insync events are synchronous callbacks, so schedule async reconnect.
+        """
         self._connected = False
         logger.warning("Disconnected from IB Gateway, starting auto-reconnect...")
-        await self._auto_reconnect()
+
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            self._reconnect_task = loop.create_task(self._auto_reconnect())
+        except RuntimeError:
+            logger.error("No running event loop for reconnect scheduling")
 
     async def _auto_reconnect(self):
         """Auto-reconnect loop with exponential backoff."""
@@ -123,11 +140,20 @@ class IBClient:
             raise ConnectionError("Not connected to IB Gateway")
 
         summary = {}
-        account_values = self.ib.accountSummary()
+        # Use async API inside coroutine context.
+        # accountSummary() can trigger "This event loop is already running".
+        account_values = await self.ib.accountSummaryAsync()
 
         for av in account_values:
             if av.tag in ("TotalCashValue", "NetLiquidation", "BuyingPower", "AvailableFunds"):
-                summary[av.tag] = float(av.value)
+                try:
+                    summary[av.tag] = float(av.value)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Non-numeric account summary value",
+                        tag=av.tag,
+                        value=av.value,
+                    )
 
         return summary
 
@@ -169,7 +195,7 @@ class IBClient:
         if not self.is_connected:
             raise ConnectionError("Not connected to IB Gateway")
 
-        from ib_async import MarketOrder
+        from ib_insync import MarketOrder
 
         order = MarketOrder(action, quantity)
         order.tif = "DAY"  # Day order
@@ -204,7 +230,16 @@ class IBClient:
             "status": trade.orderStatus.status,
             "filled_qty": float(trade.orderStatus.filled),
             "avg_fill_price": float(trade.orderStatus.avgFillPrice),
-            "commission": sum(f.commission for f in trade.fills) if trade.fills else 0.0,
+            "commission": (
+                sum(
+                    (
+                        getattr(getattr(f, "commissionReport", None), "commission", 0.0)
+                        or 0.0
+                    )
+                    for f in trade.fills
+                )
+                if trade.fills else 0.0
+            ),
             "filled": filled and trade.orderStatus.status == "Filled",
         }
 
@@ -230,21 +265,35 @@ class IBClient:
         if not self.is_connected:
             raise ConnectionError("Not connected to IB Gateway")
 
-        ticker = await self.ib.reqMktDataAsync(contract, snapshot=True)
+        tickers = await self.ib.reqTickersAsync(contract)
+        if not tickers:
+            return None
+        ticker = tickers[0]
 
-        # Wait briefly for data
-        await asyncio.sleep(1)
+        candidates = [
+            ticker.marketPrice(),
+            ticker.last,
+            ticker.close,
+            ticker.bid,
+            ticker.ask,
+        ]
 
-        price = None
-        if ticker.last and ticker.last > 0:
-            price = float(ticker.last)
-        elif ticker.close and ticker.close > 0:
-            price = float(ticker.close)
+        for value in candidates:
+            if value is None:
+                continue
+            if isinstance(value, float) and math.isnan(value):
+                continue
+            if value > 0:
+                return float(value)
 
-        return price
+        return None
 
     async def disconnect(self):
         """Disconnect from IB Gateway."""
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
+
         if self.ib and self.ib.isConnected():
             self.ib.disconnect()
             logger.info("Disconnected from IB Gateway")

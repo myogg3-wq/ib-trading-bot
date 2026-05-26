@@ -4,19 +4,37 @@ Test webhook integration with sample BUY/SELL signals.
 Simulates TradingView alerts.
 """
 
-import requests
 import json
+import os
 import sys
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 # Configuration
-WEBHOOK_URL = "http://localhost:8000/webhook"
-WEBHOOK_SECRET = "change_me"  # Change to your secret in .env
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "http://localhost:8000/webhook")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me")
+LIVE_WEBHOOK_TEST_CONFIRMATION = "YES_I_UNDERSTAND_THIS_CAN_QUEUE_REAL_ORDERS"
+
+
+def _is_local_webhook_url(url: str) -> bool:
+    """Return True only for local webhook targets that cannot hit live queues."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def _should_block_non_local_target() -> bool:
+    """Protect live queues from accidental sample BUY/SELL alerts."""
+    if _is_local_webhook_url(WEBHOOK_URL):
+        return False
+    return os.getenv("ALLOW_LIVE_WEBHOOK_TEST") != LIVE_WEBHOOK_TEST_CONFIRMATION
 
 
 def send_alert(action: str, ticker: str, price: Optional[float] = None) -> bool:
     """Send a test alert to the webhook."""
+    import requests
+
     payload = {
         "secret": WEBHOOK_SECRET,
         "action": action.upper(),
@@ -57,6 +75,8 @@ def send_alert(action: str, ticker: str, price: Optional[float] = None) -> bool:
 
 def test_health() -> bool:
     """Test if API is healthy."""
+    import requests
+
     print("🔍 Testing API health...")
     try:
         response = requests.get(f"{WEBHOOK_URL.rsplit('/', 1)[0]}/health", timeout=5)
@@ -135,6 +155,8 @@ def run_scenarios():
 
 def test_invalid_secret():
     """Test that invalid secret is rejected."""
+    import requests
+
     print("\n" + "-" * 50)
     print("🔒 Testing security...")
     print("-" * 50)
@@ -165,6 +187,8 @@ def test_invalid_secret():
 
 def test_invalid_action():
     """Test that invalid action is rejected."""
+    import requests
+
     print("\n📤 Sending alert with INVALID action...")
 
     payload = {
@@ -194,6 +218,16 @@ def main():
     print("\n" + "=" * 50)
     print("IB Trading Bot - Webhook Test Suite")
     print("=" * 50)
+
+    if _should_block_non_local_target():
+        print("\n❌ Refusing to send sample alerts to a non-local webhook target.")
+        print(f"   WEBHOOK_URL={WEBHOOK_URL}")
+        print("   This script can enqueue real BUY/SELL orders when pointed at production.")
+        print("\n   For local testing, use:")
+        print("   WEBHOOK_URL=http://localhost:8000/webhook")
+        print("\n   If you intentionally want a live queue test, set:")
+        print(f"   ALLOW_LIVE_WEBHOOK_TEST={LIVE_WEBHOOK_TEST_CONFIRMATION}")
+        return 2
 
     # Check configuration
     if WEBHOOK_SECRET == "change_me":

@@ -15,6 +15,16 @@ PASS = 0
 FAIL = 0
 
 
+def docker_host_hint(error: Exception, service_name: str) -> str:
+    """Provide actionable hint for common local-vs-docker hostname mistakes."""
+    text = str(error)
+    if "nodename nor servname provided" in text and service_name in ("db", "redis"):
+        if service_name == "db":
+            return " (docker 외부 실행 중이면 DATABASE_URL host를 localhost로 설정하세요)"
+        return " (docker 외부 실행 중이면 REDIS_URL host를 localhost로 설정하세요)"
+    return ""
+
+
 def result(name, success, detail=""):
     global PASS, FAIL
     if success:
@@ -62,7 +72,7 @@ async def test_all():
         bot_settings = await get_bot_settings()
         result("Bot settings", True, f"(buy=${bot_settings.buy_amount_usd})")
     except Exception as e:
-        result("Database", False, str(e))
+        result("Database", False, str(e) + docker_host_hint(e, "db"))
 
     print()
 
@@ -77,7 +87,7 @@ async def test_all():
         stats = await get_queue_stats()
         result("Queue stats", True, f"(total: {stats['total']})")
     except Exception as e:
-        result("Redis", False, str(e))
+        result("Redis", False, str(e) + docker_host_hint(e, "redis"))
 
     print()
 
@@ -107,8 +117,8 @@ async def test_all():
     print("━━━ Telegram ━━━")
     try:
         from app.notifications.telegram_bot import send_notification
-        await send_notification("🧪 Test message from IB Trading Bot")
-        result("Telegram notification", True, "(check your Telegram!)")
+        sent = await send_notification("🧪 Test message from IB Trading Bot")
+        result("Telegram notification", sent, "(check your Telegram!)" if sent else "(send failed)")
     except Exception as e:
         result("Telegram", False, str(e))
 
