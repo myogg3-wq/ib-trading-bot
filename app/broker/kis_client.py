@@ -919,47 +919,54 @@ class KISClient:
         """
         target_key = self._symbol_key(symbol)
         target = self._symbol_code(target_key)
-        order_code = self._order_exchange_candidates(target_key)[0]
-        currency = self._currency_for_order_exchange(order_code)
-        rows = await self.get_overseas_balance(exchange_code=order_code, currency_code=currency)
+        order_candidates = self._order_exchange_candidates(target_key)
+        currency = self._currency_for_order_exchange(order_candidates[0])
 
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            pdno = str(
-                row.get("ovrs_pdno")
-                or row.get("pdno")
-                or row.get("item_cd")
-                or ""
-            ).strip().upper()
-            if pdno != target:
-                continue
+        for order_code in order_candidates:
+            currency = self._currency_for_order_exchange(order_code)
+            rows = await self.get_overseas_balance(exchange_code=order_code, currency_code=currency)
 
-            qty = _to_int_or_zero(
-                row.get("ovrs_cblc_qty")
-                or row.get("cblc_qty")
-                or row.get("hold_qty")
-                or row.get("blce_qty")
-            )
-            orderable_qty = _to_int_or_zero(
-                row.get("ord_psbl_qty")
-                or row.get("sell_psbl_qty")
-                or row.get("ovrs_ord_psbl_qty")
-            )
-            avg_price = _to_float_or_zero(
-                row.get("pchs_avg_pric")
-                or row.get("avg_unpr")
-                or row.get("avg_price")
-            )
-            return {
-                "symbol": target_key,
-                "symbol_code": target,
-                "currency": currency,
-                "qty": qty,
-                "orderable_qty": orderable_qty,
-                "avg_price": round(avg_price, 6),
-                "raw": row,
-            }
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                pdno = str(
+                    row.get("ovrs_pdno")
+                    or row.get("pdno")
+                    or row.get("item_cd")
+                    or ""
+                ).strip().upper()
+                if pdno != target:
+                    continue
+
+                qty = _to_int_or_zero(
+                    row.get("ovrs_cblc_qty")
+                    or row.get("cblc_qty")
+                    or row.get("hold_qty")
+                    or row.get("blce_qty")
+                )
+                orderable_qty = _to_int_or_zero(
+                    row.get("ord_psbl_qty")
+                    or row.get("sell_psbl_qty")
+                    or row.get("ovrs_ord_psbl_qty")
+                )
+                avg_price = _to_float_or_zero(
+                    row.get("pchs_avg_pric")
+                    or row.get("avg_unpr")
+                    or row.get("avg_price")
+                )
+                self._symbol_exchange_cache[target_key] = (
+                    _ORDER_TO_QUOTE_EXCHANGE.get(order_code, ""),
+                    order_code,
+                )
+                return {
+                    "symbol": target_key,
+                    "symbol_code": target,
+                    "currency": currency,
+                    "qty": qty,
+                    "orderable_qty": orderable_qty,
+                    "avg_price": round(avg_price, 6),
+                    "raw": row,
+                }
 
         return {
             "symbol": target_key,
