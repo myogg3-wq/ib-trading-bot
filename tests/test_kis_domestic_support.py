@@ -78,6 +78,20 @@ class KISDomesticPendingQueueTests(unittest.TestCase):
         self.assertFalse(is_pending_order_expired(fresh, now_utc=now))
         self.assertTrue(is_pending_order_expired(stale, now_utc=now))
 
+    def test_pending_order_ttl_uses_original_received_at_after_requeue(self):
+        now = datetime(2026, 5, 26, 13, 30, tzinfo=timezone.utc)
+        requeued_after_holiday = {
+            "ticker": "FCA",
+            "received_at": (now - timedelta(hours=89.5)).isoformat(),
+            "queued_at": (now - timedelta(minutes=1)).isoformat(),
+        }
+
+        self.assertAlmostEqual(
+            pending_order_age_hours(requeued_after_holiday, now_utc=now),
+            89.5,
+        )
+        self.assertTrue(is_pending_order_expired(requeued_after_holiday, now_utc=now))
+
 
 class KISDomesticBuySizingTests(unittest.IsolatedAsyncioTestCase):
     async def test_buy_by_amount_uses_nearest_under_target_quantity(self):
@@ -128,6 +142,59 @@ class KISDomesticBuySizingTests(unittest.IsolatedAsyncioTestCase):
             side="BUY",
             qty=1,
         )
+
+
+class KISDomesticSellProtectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_domestic_ioc_limit_order_uses_profit_protecting_order_type(self):
+        client = KISClient()
+        client._authorized_headers = AsyncMock(return_value={})
+        client._request_json = AsyncMock(return_value={"rt_cd": "0", "output": {"ODNO": "ioc-1"}})
+
+        result = await client.place_domestic_ioc_limit_order(
+            symbol="069500",
+            side="SELL",
+            qty=3,
+            limit_price=12345.6,
+        )
+
+        self.assertEqual(result["order_id"], "ioc-1")
+        body = client._request_json.await_args.kwargs["json"]
+        self.assertEqual(body["ORD_DVSN"], "11")
+        self.assertEqual(body["ORD_UNPR"], "12346")
+        self.assertEqual(body["SLL_TYPE"], "01")
+
+    async def test_domestic_profit_protected_sell_skips_when_ioc_limit_does_not_fill(self):
+        client = KISClient()
+        client.get_domestic_symbol_balance = AsyncMock(
+            return_value={"qty": 5, "orderable_qty": 5}
+        )
+        client.place_domestic_ioc_limit_order = AsyncMock(return_value={"order_id": "ioc-2"})
+        client.place_domestic_market_order = AsyncMock()
+        client.wait_for_domestic_order_outcome = AsyncMock(
+            return_value={
+                "filled_qty": 0,
+                "unfilled_qty": 5,
+                "fill_price": 0.0,
+                "fill_amount": 0.0,
+            }
+        )
+
+        result = await client.place_domestic_sell_qty(
+            "069500",
+            5,
+            min_limit_price=10123.4,
+        )
+
+        self.assertFalse(result["success"])
+        self.assertTrue(result["skipped"])
+        self.assertEqual(result["reason"], "sell_profit_only_hold")
+        client.place_domestic_ioc_limit_order.assert_awaited_once_with(
+            symbol="069500",
+            side="SELL",
+            qty=5,
+            limit_price=10123.4,
+        )
+        client.place_domestic_market_order.assert_not_awaited()
 
 
 class KISOverseasOrderRoutingTests(unittest.IsolatedAsyncioTestCase):

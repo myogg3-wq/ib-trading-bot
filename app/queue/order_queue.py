@@ -113,8 +113,9 @@ async def enqueue_order_once(order_data: dict, *, ttl_seconds: Optional[int] = N
     queue_name = _queue_name_for_action(order_data.get("action", ""))
     order_json = json.dumps(_sanitize_order_for_queue(order_data))
     idempotency_key = str(order_data.get("idempotency_key") or "").strip()
+    dedupe_key = str(order_data.get("dedupe_key") or idempotency_key).strip()
 
-    if not idempotency_key:
+    if not dedupe_key:
         await r.lpush(queue_name, order_json)
         logger.info(
             "Order queued without idempotency key",
@@ -128,7 +129,7 @@ async def enqueue_order_once(order_data: dict, *, ttl_seconds: Optional[int] = N
     result = await r.eval(
         _ENQUEUE_ONCE_SCRIPT,
         2,
-        _idempotency_redis_key(idempotency_key),
+        _idempotency_redis_key(dedupe_key),
         queue_name,
         order_json,
         datetime.now(timezone.utc).isoformat(),
@@ -147,6 +148,7 @@ async def enqueue_order_once(order_data: dict, *, ttl_seconds: Optional[int] = N
             ticker=order_data.get("ticker"),
             action=order_data.get("action"),
             idempotency_key=idempotency_key,
+            dedupe_key=dedupe_key,
         )
     return queued
 
@@ -158,7 +160,9 @@ async def enqueue_pending(order_data: dict):
     """
     r = await get_redis()
     payload = _sanitize_order_for_queue(order_data)
-    payload["queued_at"] = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    payload.setdefault("first_queued_at", payload.get("queued_at") or now_iso)
+    payload["queued_at"] = now_iso
     payload["pending_reason"] = "outside_market_hours"
     order_json = json.dumps(payload)
     await r.lpush(PENDING_QUEUE, order_json)
@@ -294,16 +298,17 @@ def _parse_order_datetime(value) -> Optional[datetime]:
 
 
 def pending_order_age_hours(order_data: dict, now_utc: Optional[datetime] = None) -> Optional[float]:
-    """Return pending order age from queued/received timestamp."""
+    """Return pending order age from the original alert timestamp."""
     now = now_utc or datetime.now(timezone.utc)
-    queued_at = (
-        _parse_order_datetime(order_data.get("queued_at"))
-        or _parse_order_datetime(order_data.get("received_at"))
+    started_at = (
+        _parse_order_datetime(order_data.get("received_at"))
         or _parse_order_datetime(order_data.get("created_at"))
+        or _parse_order_datetime(order_data.get("first_queued_at"))
+        or _parse_order_datetime(order_data.get("queued_at"))
     )
-    if queued_at is None:
+    if started_at is None:
         return None
-    return max(0.0, (now - queued_at).total_seconds() / 3600.0)
+    return max(0.0, (now - started_at).total_seconds() / 3600.0)
 
 
 def is_pending_order_expired(order_data: dict, now_utc: Optional[datetime] = None) -> bool:
@@ -356,7 +361,7 @@ async def purge_expired_pending_orders(now_utc: Optional[datetime] = None) -> li
     return expired
 
 
-async def flush_pending_to_active(market: Optional[str] = None):
+async def flush_pending_to_active(market: Optional[str] = None, *, return_expired: bool = False):
     """
     Move pending orders (waiting for market open) to active queues.
     Called by scheduler at market open.
@@ -367,7 +372,7 @@ async def flush_pending_to_active(market: Optional[str] = None):
     r = await get_redis()
     count = 0
     kept = 0
-    expired = 0
+    expired_orders: list[dict] = []
     now = datetime.now(timezone.utc)
 
     pending_count = await r.llen(PENDING_QUEUE)
@@ -383,7 +388,7 @@ async def flush_pending_to_active(market: Optional[str] = None):
             continue
 
         if is_pending_order_expired(order_data, now_utc=now):
-            expired += 1
+            expired_orders.append(order_data)
             continue
 
         if not _pending_order_matches_market(order_data, market):
@@ -400,6 +405,7 @@ async def flush_pending_to_active(market: Optional[str] = None):
 
         count += 1
 
+    expired = len(expired_orders)
     if count > 0 or expired > 0:
         logger.info(
             "Moved pending orders to active queues",
@@ -409,6 +415,13 @@ async def flush_pending_to_active(market: Optional[str] = None):
             market=market or "ALL",
         )
 
+    if return_expired:
+        return {
+            "moved": count,
+            "kept": kept,
+            "expired": expired,
+            "expired_orders": expired_orders,
+        }
     return count
 
 

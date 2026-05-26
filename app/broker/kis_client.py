@@ -2141,9 +2141,17 @@ class KISClient:
             "raw": None,
         }
 
-    async def place_domestic_market_order(self, symbol: str, side: str, qty: int) -> dict:
+    async def place_domestic_cash_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: int,
+        *,
+        ord_dvsn: str = "01",
+        order_price: float = 0.0,
+    ) -> dict:
         """
-        Place KIS domestic/KRX market cash order.
+        Place KIS domestic/KRX cash order.
         side: BUY or SELL
         """
         if qty <= 0:
@@ -2154,15 +2162,20 @@ class KISClient:
         if side_upper not in ("BUY", "SELL"):
             raise RuntimeError(f"잘못된 국내 주문 방향: {side}")
 
+        order_type = str(ord_dvsn or "01").strip()
+        order_price_text = "0" if order_type == "01" else _format_krw_order_price(order_price)
+        if order_type != "01" and int(order_price_text) <= 0:
+            raise RuntimeError(f"국내 지정가 주문 단가가 올바르지 않습니다: {order_price}")
+
         tr_id = "TTTC0012U" if side_upper == "BUY" else "TTTC0011U"
         headers = await self._authorized_headers(tr_id)
         body = {
             "CANO": settings.kis_account_no,
             "ACNT_PRDT_CD": settings.kis_account_product_code,
             "PDNO": symbol_code,
-            "ORD_DVSN": "01",  # market
+            "ORD_DVSN": order_type,
             "ORD_QTY": str(int(qty)),
-            "ORD_UNPR": "0",
+            "ORD_UNPR": order_price_text,
             "EXCG_ID_DVSN_CD": str(settings.kis_domestic_exchange_code or "KRX").strip().upper(),
             "SLL_TYPE": "01" if side_upper == "SELL" else "",
             "CNDT_PRIC": "",
@@ -2182,6 +2195,26 @@ class KISClient:
         if isinstance(output, dict):
             order_no = str(output.get("ODNO") or output.get("odno") or output.get("ord_no") or "").strip()
         return {"order_id": order_no, "raw": data}
+
+    async def place_domestic_market_order(self, symbol: str, side: str, qty: int) -> dict:
+        """Place KIS domestic/KRX market cash order."""
+        return await self.place_domestic_cash_order(symbol=symbol, side=side, qty=qty)
+
+    async def place_domestic_ioc_limit_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: int,
+        limit_price: float,
+    ) -> dict:
+        """Place a KRX IOC limit order so unfilled remainder is not left open."""
+        return await self.place_domestic_cash_order(
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            ord_dvsn="11",
+            order_price=limit_price,
+        )
 
     async def get_domestic_order_history(
         self,
@@ -2373,8 +2406,13 @@ class KISClient:
             "currency": "KRW",
         }
 
-    async def place_domestic_sell_qty(self, symbol: str, qty: float) -> dict:
-        """Sell a domestic/KRX symbol by quantity using market order."""
+    async def place_domestic_sell_qty(
+        self,
+        symbol: str,
+        qty: float,
+        min_limit_price: Optional[float] = None,
+    ) -> dict:
+        """Sell a domestic/KRX symbol by quantity, optionally with profit protection."""
         symbol_code = _normalize_domestic_symbol(symbol)
         qty_int = int(qty)
         if qty_int < 1:
@@ -2388,7 +2426,16 @@ class KISClient:
         if qty_int < 1:
             return {"success": False, "error": f"{symbol_code} 국내 매도 가능 수량이 없습니다"}
 
-        order = await self.place_domestic_market_order(symbol=symbol_code, side="SELL", qty=qty_int)
+        protected_limit_price = float(min_limit_price or 0.0)
+        if protected_limit_price > 0:
+            order = await self.place_domestic_ioc_limit_order(
+                symbol=symbol_code,
+                side="SELL",
+                qty=qty_int,
+                limit_price=protected_limit_price,
+            )
+        else:
+            order = await self.place_domestic_market_order(symbol=symbol_code, side="SELL", qty=qty_int)
         order_id = str(order.get("order_id", "")).strip()
         if not order_id:
             return {"success": False, "error": "KIS 국내 주문번호를 받지 못했습니다"}
@@ -2404,6 +2451,19 @@ class KISClient:
         fill_price = float(outcome.get("fill_price", 0.0) or 0.0)
         fill_amount = float(outcome.get("fill_amount", 0.0) or 0.0)
         if filled_qty <= 0:
+            if protected_limit_price > 0:
+                return {
+                    "success": False,
+                    "skipped": True,
+                    "reason": "sell_profit_only_hold",
+                    "error": (
+                        f"{symbol_code} 수익 보호 지정가 "
+                        f"{_format_krw_order_price(protected_limit_price)}원에 즉시 체결되지 않아 매도를 보류했습니다"
+                    ),
+                    "order_id": order_id,
+                    "ticker": symbol_code,
+                    "currency": "KRW",
+                }
             return {"success": False, "error": f"KIS 국내 매도 체결을 확인하지 못했습니다 ({qty_int}주)"}
         if fill_price <= 0:
             fill_price = float(await self.get_domestic_quote_price(symbol_code))

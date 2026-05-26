@@ -38,7 +38,7 @@ from app.queue.order_queue import get_queue_stats, get_redis
 async def gather_probe() -> dict:
     now = datetime.now(timezone.utc)
     failed_since = now - timedelta(hours=6)
-    stale_pending_cutoff = now - timedelta(hours=max(1.0, float(settings.pending_order_ttl_hours or 96.0)))
+    stale_pending_cutoff = now - timedelta(hours=max(1.0, float(settings.pending_order_ttl_hours or 72.0)))
 
     result: dict = {
         "ok": True,

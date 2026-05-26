@@ -949,35 +949,59 @@ async def _execute_buy_kis_domestic(symbol: str, alert_id: str = "") -> dict:
     raw_order_id = str(order_result.get("order_id", "")).strip()
     synthetic_order_id = _kis_synthetic_order_id(raw_order_id, symbol, "BUY")
 
-    async with get_session() as session:
-        position = Position(
+    try:
+        async with get_session() as session:
+            position = Position(
+                ticker=symbol,
+                qty=fill_qty,
+                entry_price=fill_price,
+                entry_amount_usd=fill_amount,
+                entry_time=datetime.now(timezone.utc),
+                status=PositionStatus.OPEN,
+                entry_order_id=synthetic_order_id,
+            )
+            session.add(position)
+
+            trade = Trade(
+                ticker=symbol,
+                side=TradeSide.BUY,
+                order_type="MKT",
+                requested_qty=fill_qty,
+                filled_qty=fill_qty,
+                requested_amount_usd=buy_amount_krw,
+                avg_fill_price=fill_price,
+                total_fill_amount_usd=fill_amount,
+                commission=order_result.get("commission", 0.0),
+                ib_order_id=synthetic_order_id,
+                status=TradeStatus.FILLED,
+                alert_id=alert_id,
+                created_at=datetime.now(timezone.utc),
+                filled_at=datetime.now(timezone.utc),
+            )
+            session.add(trade)
+    except Exception as db_err:
+        # Broker fill already happened. Do not report failure or invite a manual
+        # duplicate order; the KIS reconcile job will repair the DB ledger.
+        logger.error(
+            "KIS domestic BUY persist failed after broker fill",
             ticker=symbol,
             qty=fill_qty,
-            entry_price=fill_price,
-            entry_amount_usd=fill_amount,
-            entry_time=datetime.now(timezone.utc),
-            status=PositionStatus.OPEN,
-            entry_order_id=synthetic_order_id,
+            price=fill_price,
+            error=str(db_err),
         )
-        session.add(position)
-
-        trade = Trade(
-            ticker=symbol,
-            side=TradeSide.BUY,
-            order_type="MKT",
-            requested_qty=fill_qty,
-            filled_qty=fill_qty,
-            requested_amount_usd=buy_amount_krw,
-            avg_fill_price=fill_price,
-            total_fill_amount_usd=fill_amount,
-            commission=order_result.get("commission", 0.0),
-            ib_order_id=synthetic_order_id,
-            status=TradeStatus.FILLED,
-            alert_id=alert_id,
-            created_at=datetime.now(timezone.utc),
-            filled_at=datetime.now(timezone.utc),
-        )
-        session.add(trade)
+        return {
+            "success": True,
+            "action": "BUY",
+            "broker": "KIS",
+            "ticker": symbol,
+            "qty": fill_qty,
+            "price": fill_price,
+            "amount": round(fill_amount, 2),
+            "commission": order_result.get("commission", 0.0),
+            "order_id": raw_order_id or synthetic_order_id,
+            "currency": "KRW",
+            "db_persist_pending_reconcile": True,
+        }
 
     logger.info(
         "BUY executed via KIS domestic",
@@ -1179,111 +1203,156 @@ async def _apply_kis_sell_fill(
     now = datetime.now(timezone.utc)
     synthetic_order_id = _kis_synthetic_order_id(raw_order_id, symbol, "SELL")
 
-    async with get_session() as session:
-        result = await session.execute(
-            select(Position).where(
-                Position.ticker == symbol,
-                Position.status == PositionStatus.OPEN,
-            ).order_by(Position.entry_time.asc(), Position.id.asc())
-        )
-        open_positions = [p for p in result.scalars().all() if _is_kis_position(p)]
+    def _pending_reconcile_result(reason: str) -> dict:
+        executed_qty = round(confirmed_qty, 4)
+        requested = float(requested_qty or 0.0)
+        remaining_qty = max(0.0, round(requested - executed_qty, 4))
+        exit_amount = round(executed_qty * float(fill_price or 0.0), 2)
+        partial_fill = remaining_qty > 0.0001
+        result = {
+            "success": True,
+            "partial_fill": partial_fill,
+            "action": "SELL",
+            "broker": "KIS",
+            "ticker": symbol,
+            "positions_closed": 0,
+            "qty": executed_qty,
+            "remaining_qty": remaining_qty,
+            "price": round(float(fill_price or 0.0), 6),
+            "entry_total": 0.0,
+            "exit_total": exit_amount,
+            "pnl": 0.0,
+            "pnl_pct": 0.0,
+            "commission": commission,
+            "order_id": raw_order_id or synthetic_order_id,
+            "currency": currency,
+            "db_persist_pending_reconcile": True,
+            "db_persist_error": reason[:180],
+        }
+        if not partial_fill:
+            result.pop("partial_fill", None)
+        return result
 
-        qty_to_close = confirmed_qty
-        position_ids: list[str] = []
-        touched_positions = 0
-        total_entry_amount = 0.0
-        exit_amount = 0.0
-        total_pnl = 0.0
+    try:
+        async with get_session() as session:
+            result = await session.execute(
+                select(Position).where(
+                    Position.ticker == symbol,
+                    Position.status == PositionStatus.OPEN,
+                ).order_by(Position.entry_time.asc(), Position.id.asc())
+            )
+            open_positions = [p for p in result.scalars().all() if _is_kis_position(p)]
 
-        for pos in open_positions:
-            if qty_to_close <= 0.0001:
-                break
+            qty_to_close = confirmed_qty
+            position_ids: list[str] = []
+            touched_positions = 0
+            total_entry_amount = 0.0
+            exit_amount = 0.0
+            total_pnl = 0.0
 
-            pos_qty = float(pos.qty or 0.0)
-            if pos_qty <= 0:
-                continue
+            for pos in open_positions:
+                if qty_to_close <= 0.0001:
+                    break
 
-            close_qty = min(pos_qty, qty_to_close)
-            if close_qty <= 0:
-                continue
+                pos_qty = float(pos.qty or 0.0)
+                if pos_qty <= 0:
+                    continue
 
-            entry_amount = float(pos.entry_amount_usd or 0.0)
-            close_entry_amount = round(entry_amount * (close_qty / pos_qty), 8)
-            close_exit_amount = round(close_qty * fill_price, 8)
-            close_pnl = close_exit_amount - close_entry_amount
-            close_pnl_pct = (close_pnl / close_entry_amount * 100) if close_entry_amount > 0 else 0.0
+                close_qty = min(pos_qty, qty_to_close)
+                if close_qty <= 0:
+                    continue
 
-            if close_qty >= pos_qty - 0.0001:
-                pos.exit_price = fill_price
-                pos.exit_amount_usd = close_exit_amount
-                pos.exit_time = now
-                pos.pnl_usd = close_pnl
-                pos.pnl_pct = close_pnl_pct
-                pos.status = PositionStatus.CLOSED
-                pos.exit_order_id = synthetic_order_id
-            else:
-                closed_position = Position(
-                    ticker=pos.ticker,
-                    qty=close_qty,
-                    entry_price=pos.entry_price,
-                    entry_amount_usd=close_entry_amount,
-                    entry_time=pos.entry_time,
-                    exit_price=fill_price,
-                    exit_amount_usd=close_exit_amount,
-                    exit_time=now,
-                    pnl_usd=close_pnl,
-                    pnl_pct=close_pnl_pct,
-                    status=PositionStatus.CLOSED,
-                    entry_order_id=pos.entry_order_id,
-                    exit_order_id=synthetic_order_id,
+                entry_amount = float(pos.entry_amount_usd or 0.0)
+                close_entry_amount = round(entry_amount * (close_qty / pos_qty), 8)
+                close_exit_amount = round(close_qty * fill_price, 8)
+                close_pnl = close_exit_amount - close_entry_amount
+                close_pnl_pct = (close_pnl / close_entry_amount * 100) if close_entry_amount > 0 else 0.0
+
+                if close_qty >= pos_qty - 0.0001:
+                    pos.exit_price = fill_price
+                    pos.exit_amount_usd = close_exit_amount
+                    pos.exit_time = now
+                    pos.pnl_usd = close_pnl
+                    pos.pnl_pct = close_pnl_pct
+                    pos.status = PositionStatus.CLOSED
+                    pos.exit_order_id = synthetic_order_id
+                else:
+                    closed_position = Position(
+                        ticker=pos.ticker,
+                        qty=close_qty,
+                        entry_price=pos.entry_price,
+                        entry_amount_usd=close_entry_amount,
+                        entry_time=pos.entry_time,
+                        exit_price=fill_price,
+                        exit_amount_usd=close_exit_amount,
+                        exit_time=now,
+                        pnl_usd=close_pnl,
+                        pnl_pct=close_pnl_pct,
+                        status=PositionStatus.CLOSED,
+                        entry_order_id=pos.entry_order_id,
+                        exit_order_id=synthetic_order_id,
+                    )
+                    session.add(closed_position)
+                    pos.qty = round(pos_qty - close_qty, 4)
+                    pos.entry_amount_usd = round(entry_amount - close_entry_amount, 8)
+                    pos.updated_at = now
+
+                qty_to_close = round(qty_to_close - close_qty, 4)
+                total_entry_amount += close_entry_amount
+                exit_amount += close_exit_amount
+                total_pnl += close_pnl
+                position_ids.append(str(pos.id))
+                touched_positions += 1
+
+            executed_qty = round(confirmed_qty - max(qty_to_close, 0.0), 4)
+            if executed_qty <= 0:
+                logger.error(
+                    "KIS SELL fill confirmed but no DB position was updated",
+                    ticker=symbol,
+                    filled_qty=confirmed_qty,
                 )
-                session.add(closed_position)
-                pos.qty = round(pos_qty - close_qty, 4)
-                pos.entry_amount_usd = round(entry_amount - close_entry_amount, 8)
-                pos.updated_at = now
+                return _pending_reconcile_result("confirmed_fill_without_matching_db_position")
 
-            qty_to_close = round(qty_to_close - close_qty, 4)
-            total_entry_amount += close_entry_amount
-            exit_amount += close_exit_amount
-            total_pnl += close_pnl
-            position_ids.append(str(pos.id))
-            touched_positions += 1
+            trade_status = (
+                TradeStatus.FILLED
+                if executed_qty >= float(requested_qty or 0.0) - 0.0001
+                else TradeStatus.PARTIAL
+            )
+            remaining_qty = max(0.0, round(float(requested_qty or 0.0) - executed_qty, 4))
+            total_pnl_pct = (total_pnl / total_entry_amount * 100) if total_entry_amount > 0 else 0.0
 
-        executed_qty = round(confirmed_qty - max(qty_to_close, 0.0), 4)
-        if executed_qty <= 0:
-            return {"success": False, "error": f"{symbol} 매도 체결 후 포지션 반영에 실패했습니다"}
-
-        trade_status = (
-            TradeStatus.FILLED
-            if executed_qty >= float(requested_qty or 0.0) - 0.0001
-            else TradeStatus.PARTIAL
-        )
-        remaining_qty = max(0.0, round(float(requested_qty or 0.0) - executed_qty, 4))
-        total_pnl_pct = (total_pnl / total_entry_amount * 100) if total_entry_amount > 0 else 0.0
-
-        trade = Trade(
+            trade = Trade(
+                ticker=symbol,
+                side=TradeSide.SELL,
+                order_type="MKT",
+                requested_qty=float(requested_qty or 0.0),
+                filled_qty=executed_qty,
+                avg_fill_price=fill_price,
+                total_fill_amount_usd=round(exit_amount, 2),
+                commission=commission,
+                ib_order_id=synthetic_order_id,
+                status=trade_status,
+                alert_id=alert_id,
+                position_ids=",".join(position_ids),
+                total_pnl_usd=round(total_pnl, 2),
+                error_message=(
+                    f"부분체결 {executed_qty:g}/{float(requested_qty or 0.0):g}주"
+                    if trade_status == TradeStatus.PARTIAL
+                    else None
+                ),
+                created_at=now,
+                filled_at=now,
+            )
+            session.add(trade)
+    except Exception as db_err:
+        logger.error(
+            "KIS SELL persist failed after broker fill",
             ticker=symbol,
-            side=TradeSide.SELL,
-            order_type="MKT",
-            requested_qty=float(requested_qty or 0.0),
-            filled_qty=executed_qty,
-            avg_fill_price=fill_price,
-            total_fill_amount_usd=round(exit_amount, 2),
-            commission=commission,
-            ib_order_id=synthetic_order_id,
-            status=trade_status,
-            alert_id=alert_id,
-            position_ids=",".join(position_ids),
-            total_pnl_usd=round(total_pnl, 2),
-            error_message=(
-                f"부분체결 {executed_qty:g}/{float(requested_qty or 0.0):g}주"
-                if trade_status == TradeStatus.PARTIAL
-                else None
-            ),
-            created_at=now,
-            filled_at=now,
+            filled_qty=confirmed_qty,
+            price=fill_price,
+            error=str(db_err),
         )
-        session.add(trade)
+        return _pending_reconcile_result(str(db_err))
 
     logger.info(
         "SELL applied via KIS",
@@ -1360,6 +1429,7 @@ async def _execute_sell_kis_domestic(symbol: str, alert_id: str = "") -> dict:
     if total_qty <= 0:
         return {"success": False, "error": f"{symbol} 국내 전체 매도 수량이 0입니다"}
 
+    min_sell_limit_price = None
     if settings.sell_only_if_profit:
         balance = await kis.get_domestic_symbol_balance(symbol)
         avg_price = float(balance.get("avg_price", 0.0) or 0.0)
@@ -1393,6 +1463,7 @@ async def _execute_sell_kis_domestic(symbol: str, alert_id: str = "") -> dict:
         pnl_pct = ((current_price - avg_price) / avg_price) * 100.0
         pnl_krw = (current_price - avg_price) * total_qty
         min_profit_pct = float(settings.sell_min_profit_pct or 0.0)
+        min_sell_limit_price = avg_price * (1.0 + min_profit_pct / 100.0)
         if pnl_pct < min_profit_pct:
             return {
                 "success": False,
@@ -1412,7 +1483,11 @@ async def _execute_sell_kis_domestic(symbol: str, alert_id: str = "") -> dict:
             }
 
     try:
-        order_result = await kis.place_domestic_sell_qty(symbol=symbol, qty=total_qty)
+        order_result = await kis.place_domestic_sell_qty(
+            symbol=symbol,
+            qty=total_qty,
+            min_limit_price=min_sell_limit_price,
+        )
     except Exception as e:
         return {"success": False, "error": f"KIS 국내 매도 요청 실패: {str(e)}"}
 
@@ -1420,6 +1495,8 @@ async def _execute_sell_kis_domestic(symbol: str, alert_id: str = "") -> dict:
     raw_order_id = str(order_result.get("order_id", "")).strip()
 
     if not order_result.get("success") and filled_qty <= 0:
+        if order_result.get("skipped"):
+            return order_result
         error_text = order_result.get("error", "KIS 국내 매도 실패")
         async with get_session() as session:
             trade = Trade(

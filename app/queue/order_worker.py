@@ -357,6 +357,34 @@ async def queue_outside_hours_notification(action: str, ticker: str) -> None:
             )
 
 
+async def mark_and_notify_expired_pending_orders(expired_orders: list[dict]) -> None:
+    """Mark expired pending orders as skipped and notify the operator once."""
+    if not expired_orders:
+        return
+
+    for expired_order in expired_orders:
+        await mark_alert_status(
+            expired_order,
+            processed=True,
+            skipped=True,
+            skip_reason="pending_order_expired_4h_strategy",
+            queued=False,
+        )
+
+    preview = ", ".join(
+        f"{str(item.get('action', '')).upper()} {str(item.get('ticker', '')).upper()}"
+        for item in expired_orders[:10]
+    )
+    remainder = len(expired_orders) - min(len(expired_orders), 10)
+    if remainder > 0:
+        preview = f"{preview} 외 {remainder}건"
+    await send_notification(
+        "⏳ 오래된 대기 주문을 폐기했습니다\n"
+        f"기준: {settings.pending_order_ttl_hours:g}시간 초과 (4시간봉/4시간봉 전략)\n"
+        f"대상: {preview}"
+    )
+
+
 async def rate_limit():
     """Enforce rate limiting between orders."""
     global _last_order_time
@@ -611,6 +639,8 @@ async def process_order(order_data: dict) -> dict:
                 f"({result['pnl_pct']:+.1f}%)"
                 f"{remaining_line}"
             )
+        if result.get("db_persist_pending_reconcile"):
+            msg += "\n참고: 증권사 체결은 확인됐고 DB 장부는 자동 정합화 대기 중입니다."
     else:
         error_text = _sanitize_error_for_telegram(result.get("error", "알 수 없는 오류"))
 
@@ -688,27 +718,7 @@ async def worker_loop():
                 if now_ts - last_pending_purge_ts >= 300.0:
                     last_pending_purge_ts = now_ts
                     expired_orders = await purge_expired_pending_orders()
-                    if expired_orders:
-                        for expired_order in expired_orders:
-                            await mark_alert_status(
-                                expired_order,
-                                processed=True,
-                                skipped=True,
-                                skip_reason="pending_order_expired_4h_strategy",
-                                queued=False,
-                            )
-                        preview = ", ".join(
-                            f"{str(item.get('action', '')).upper()} {str(item.get('ticker', '')).upper()}"
-                            for item in expired_orders[:10]
-                        )
-                        remainder = len(expired_orders) - min(len(expired_orders), 10)
-                        if remainder > 0:
-                            preview = f"{preview} 외 {remainder}건"
-                        await send_notification(
-                            "⏳ 오래된 대기 주문을 폐기했습니다\n"
-                            f"기준: {settings.pending_order_ttl_hours:g}시간 초과 (4시간봉/4시간봉 전략)\n"
-                            f"대상: {preview}"
-                        )
+                    await mark_and_notify_expired_pending_orders(expired_orders)
 
                 open_markets = []
                 if is_krx_market_open():
@@ -722,8 +732,12 @@ async def worker_loop():
                 if open_markets and now_ts - last_pending_flush_ts >= 60.0:
                     last_pending_flush_ts = now_ts
                     flushed = 0
+                    expired_during_flush = []
                     for market in open_markets:
-                        flushed += await flush_pending_to_active(market=market)
+                        flush_result = await flush_pending_to_active(market=market, return_expired=True)
+                        flushed += int(flush_result.get("moved", 0))
+                        expired_during_flush.extend(flush_result.get("expired_orders", []))
+                    await mark_and_notify_expired_pending_orders(expired_during_flush)
                     if flushed > 0:
                         await send_notification(
                             f"🔁 워커 안전장치가 대기 주문 {flushed}건을 실행 큐로 이동했습니다"

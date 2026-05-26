@@ -65,9 +65,9 @@ class Settings(BaseSettings):
     market_holidays_szse: str = Field(default="")
     market_holidays_tse: str = Field(default="")
 
-    # 4h/4h strategy: a signal queued outside market hours should survive
-    # normal overnight/weekend gaps, but not remain valid indefinitely.
-    pending_order_ttl_hours: float = Field(default=96.0)
+    # 4h/4h strategy: queued alerts should survive a normal overnight/weekend
+    # gap, but not execute after a long holiday gap or repeated requeue.
+    pending_order_ttl_hours: float = Field(default=72.0)
 
     # === Webhook Security ===
     webhook_secret: str = Field(default="change_me")
@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     allow_sell_for_open_positions_outside_allowlist: bool = Field(default=True)
     webhook_enqueue_timeout_seconds: float = Field(default=1.0)
     webhook_idempotency_ttl_seconds: int = Field(default=604800)
+    webhook_fallback_idempotency_ttl_seconds: int = Field(default=600)
     webhook_slow_request_ms: int = Field(default=1000)
     telegram_verbose_webhook_alerts: bool = Field(default=False)
 

@@ -9,6 +9,7 @@ os.environ["KIS_TOKEN_CACHE_PATH"] = str(TEST_KIS_TOKEN_CACHE_PATH)
 atexit.register(lambda: TEST_KIS_TOKEN_CACHE_PATH.unlink(missing_ok=True))
 
 from app.config import settings
+from app.broker import order_executor
 from app.broker.kis_client import KISClient, _format_us_order_price
 
 
@@ -24,6 +25,36 @@ class KISOrderPriceFormattingTests(unittest.TestCase):
 
 
 class KISSellHandlingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_confirmed_sell_fill_is_success_when_db_persist_fails(self):
+        old_get_session = order_executor.get_session
+
+        class FailingSession:
+            async def __aenter__(self):
+                raise RuntimeError("db down")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        try:
+            order_executor.get_session = lambda: FailingSession()
+            result = await order_executor._apply_kis_sell_fill(
+                symbol="FCA",
+                requested_qty=1,
+                filled_qty=1,
+                fill_price=20.0,
+                commission=0.0,
+                raw_order_id="sell-db-fail",
+                alert_id="alert-1",
+                currency="USD",
+            )
+        finally:
+            order_executor.get_session = old_get_session
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["db_persist_pending_reconcile"])
+        self.assertEqual(result["qty"], 1)
+        self.assertEqual(result["exit_total"], 20.0)
+
     async def test_full_fill_is_treated_as_success_even_if_history_looks_open(self):
         client = KISClient()
         client.get_symbol_balance = AsyncMock(return_value={"qty": 1, "avg_price": 0.0})

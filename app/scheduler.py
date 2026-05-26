@@ -25,9 +25,12 @@ async def job_market_open():
     Moves pending orders to active queues.
     """
     from app.queue.order_queue import flush_pending_to_active
+    from app.queue.order_worker import mark_and_notify_expired_pending_orders
     from app.notifications.telegram_bot import send_notification
 
-    count = await flush_pending_to_active(market="US")
+    flush_result = await flush_pending_to_active(market="US", return_expired=True)
+    count = int(flush_result.get("moved", 0))
+    await mark_and_notify_expired_pending_orders(flush_result.get("expired_orders", []))
     if count > 0:
         await send_notification(
             f"🔔 장이 열렸습니다!\n"
@@ -45,9 +48,12 @@ async def job_krx_market_open():
     Moves pending orders to active queues; non-KRX orders are rechecked by the worker.
     """
     from app.queue.order_queue import flush_pending_to_active
+    from app.queue.order_worker import mark_and_notify_expired_pending_orders
     from app.notifications.telegram_bot import send_notification
 
-    count = await flush_pending_to_active(market="KRX")
+    flush_result = await flush_pending_to_active(market="KRX", return_expired=True)
+    count = int(flush_result.get("moved", 0))
+    await mark_and_notify_expired_pending_orders(flush_result.get("expired_orders", []))
     if count > 0:
         await send_notification(
             f"🔔 한국장이 열렸습니다!\n"

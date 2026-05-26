@@ -33,6 +33,66 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
+def _clean_tradingview_optional_field(value) -> str:
+    """Treat unresolved TradingView placeholders as missing optional fields."""
+    text = str(value or "").strip()
+    if text.startswith("{{") and text.endswith("}}"):
+        return ""
+    return text
+
+
+def _build_webhook_idempotency(
+    *,
+    payload: dict,
+    action: str,
+    trade_symbol: str,
+    price_float: Optional[float],
+    alert_id: str,
+    alert_time: str,
+    now_utc: Optional[datetime] = None,
+) -> tuple[str, str, str, int]:
+    """Return the audit fingerprint, AlertLog key, Redis dedupe key, and TTL."""
+    audit_payload = dict(payload)
+    if "secret" in audit_payload:
+        audit_payload["secret"] = "***"
+    hash_payload = dict(payload)
+    hash_payload.pop("secret", None)
+    payload_fingerprint = json.dumps(audit_payload, sort_keys=True, separators=(",", ":"))
+    hash_fingerprint = json.dumps(hash_payload, sort_keys=True, separators=(",", ":"))
+    payload_hash = hashlib.sha256(hash_fingerprint.encode("utf-8")).hexdigest()
+    idempotency_ttl = int(settings.webhook_idempotency_ttl_seconds)
+
+    dedupe_raw_key = ""
+    if alert_id:
+        # Do not rely on alert_id alone (can collide across symbols/actions).
+        raw_key = f"aid|{alert_id}|{action}|{trade_symbol}|{alert_time}|{payload_hash}"
+    elif alert_time:
+        raw_key = (
+            f"payload|{action}|{trade_symbol}|{alert_time}|"
+            f"{price_float if price_float is not None else ''}|{payload_hash}"
+        )
+    else:
+        # Some indicator-style alerts do not provide a stable alert_id/time. Keep
+        # exact-payload retries idempotent briefly. The AlertLog key rotates by
+        # coarse bucket for audit history, while the Redis key intentionally does
+        # not rotate so retry bursts across a bucket boundary still dedupe.
+        idempotency_ttl = int(settings.webhook_fallback_idempotency_ttl_seconds)
+        bucket_seconds = max(idempotency_ttl, 60)
+        bucket = int((now_utc or datetime.now(timezone.utc)).timestamp() // bucket_seconds)
+        raw_key = (
+            f"payload-no-time|{action}|{trade_symbol}|bucket:{bucket}|"
+            f"{price_float if price_float is not None else ''}|{payload_hash}"
+        )
+        dedupe_raw_key = (
+            f"payload-no-time-dedupe|{action}|{trade_symbol}|"
+            f"{price_float if price_float is not None else ''}|{payload_hash}"
+        )
+
+    idempotency_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    dedupe_key = hashlib.sha256((dedupe_raw_key or raw_key).encode("utf-8")).hexdigest()
+    return payload_fingerprint, idempotency_key, dedupe_key, idempotency_ttl
+
+
 async def _persist_queued_alert_log(
     *,
     ticker: str,
@@ -229,8 +289,8 @@ async def receive_webhook(request: Request):
     action = payload.get("action", "").upper().strip()
     ticker = payload.get("ticker", "").strip()
     price = payload.get("price")
-    alert_id = payload.get("alert_id", "")
-    alert_time = str(payload.get("time", "")).strip()
+    alert_id = _clean_tradingview_optional_field(payload.get("alert_id", ""))
+    alert_time = _clean_tradingview_optional_field(payload.get("time", ""))
 
     if action not in ("BUY", "SELL"):
         logger.error("Invalid action", action=action)
@@ -287,19 +347,16 @@ async def receive_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Stale alert")
 
     # 6. Build idempotency key
-    payload_fingerprint = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    payload_hash = hashlib.sha256(payload_fingerprint.encode("utf-8")).hexdigest()
-    if alert_id:
-        # Do not rely on alert_id alone (can collide across symbols/actions).
-        raw_key = f"aid|{alert_id}|{action}|{trade_symbol}|{alert_time}|{payload_hash}"
-    else:
-        time_token = alert_time or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        raw_key = (
-            f"payload|{action}|{trade_symbol}|{time_token}|"
-            f"{price_float if price_float is not None else ''}|{payload_hash}"
-        )
-    idempotency_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
     now_utc = datetime.now(timezone.utc)
+    payload_fingerprint, idempotency_key, dedupe_key, idempotency_ttl = _build_webhook_idempotency(
+        payload=payload,
+        action=action,
+        trade_symbol=trade_symbol,
+        price_float=price_float,
+        alert_id=alert_id,
+        alert_time=alert_time,
+        now_utc=now_utc,
+    )
 
     # 7. Push to order queue first. TradingView marks webhooks failed if the
     # receiver does not respond quickly, so DB audit writes happen after ACK.
@@ -309,6 +366,7 @@ async def receive_webhook(request: Request):
         "price": price_float,
         "alert_id": alert_id,
         "idempotency_key": idempotency_key,
+        "dedupe_key": dedupe_key,
         "retry_count": 0,
         "received_at": now_utc.isoformat(),
         "source_ip": source_ip,
@@ -319,7 +377,7 @@ async def receive_webhook(request: Request):
         queued = await asyncio.wait_for(
             enqueue_order_once(
                 order_data,
-                ttl_seconds=settings.webhook_idempotency_ttl_seconds,
+                ttl_seconds=idempotency_ttl,
             ),
             timeout=enqueue_timeout,
         )
