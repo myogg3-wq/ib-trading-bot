@@ -136,13 +136,18 @@ def build_notification_message(
     current_fingerprint = report["problem_fingerprint"]
 
     if current_status == "healthy":
-        if previous_status in {"degraded", "down"}:
+        if previous_status == "down":
             lines = [
                 "🟢 사이트 상태가 복구되었습니다.",
                 f"이전 상태: {previous_status.upper()}",
                 f"복구 시각(UTC): {report['checked_at']}",
             ]
             return "\n".join(lines)
+        return None
+
+    # Single slow checks are too noisy for the trading Telegram channel. Keep
+    # degraded reports in the persisted monitor files, but page only on errors.
+    if current_status == "degraded":
         return None
 
     if current_status != previous_status or current_fingerprint != previous_fingerprint:
