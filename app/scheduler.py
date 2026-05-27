@@ -18,6 +18,32 @@ logger = structlog.get_logger()
 scheduler = AsyncIOScheduler()
 _last_ib_connected = None
 
+ASIA_MARKET_LABELS = {
+    "HKEX": "홍콩장",
+    "SSE": "중국 상해장",
+    "SZSE": "중국 심천장",
+    "TSE": "일본장",
+}
+
+ASIA_MARKET_OPEN_SCHEDULES = {
+    "HKEX": {
+        "timezone": "Asia/Hong_Kong",
+        "sessions": ((9, 30, "morning"), (13, 0, "afternoon")),
+    },
+    "SSE": {
+        "timezone": "Asia/Shanghai",
+        "sessions": ((9, 30, "morning"), (13, 0, "afternoon")),
+    },
+    "SZSE": {
+        "timezone": "Asia/Shanghai",
+        "sessions": ((9, 30, "morning"), (13, 0, "afternoon")),
+    },
+    "TSE": {
+        "timezone": "Asia/Tokyo",
+        "sessions": ((9, 0, "morning"), (12, 30, "afternoon")),
+    },
+}
+
 
 async def job_market_open():
     """
@@ -61,6 +87,31 @@ async def job_krx_market_open():
         )
     else:
         logger.info("KRX market open — no pending orders")
+
+
+async def job_asia_market_open(market: str):
+    """
+    Moves Asia-market pending orders at each exchange's morning open and
+    afternoon restart. This keeps the expanded watchlist responsive even when
+    alerts arrive during lunch breaks or before the local market opens.
+    """
+    from app.queue.order_queue import flush_pending_to_active
+    from app.queue.order_worker import mark_and_notify_expired_pending_orders
+    from app.notifications.telegram_bot import send_notification
+
+    market_key = str(market or "").strip().upper()
+    label = ASIA_MARKET_LABELS.get(market_key, market_key)
+
+    flush_result = await flush_pending_to_active(market=market_key, return_expired=True)
+    count = int(flush_result.get("moved", 0))
+    await mark_and_notify_expired_pending_orders(flush_result.get("expired_orders", []))
+    if count > 0:
+        await send_notification(
+            f"🔔 {label}이 열렸습니다!\n"
+            f"📤 대기 주문 {count}건을 실행 큐로 이동했습니다."
+        )
+    else:
+        logger.info("Asia market open — no pending orders", market=market_key)
 
 
 async def job_daily_report():
@@ -330,6 +381,23 @@ def setup_scheduler():
         name="KRX Market Open — Flush Pending Queue",
         replace_existing=True,
     )
+
+    for market_key, schedule in ASIA_MARKET_OPEN_SCHEDULES.items():
+        timezone = str(schedule["timezone"])
+        for hour, minute, session_name in schedule["sessions"]:
+            scheduler.add_job(
+                job_asia_market_open,
+                CronTrigger(
+                    hour=hour,
+                    minute=minute,
+                    day_of_week="mon-fri",
+                    timezone=timezone,
+                ),
+                id=f"{market_key.lower()}_{session_name}_market_open",
+                name=f"{market_key} {session_name.title()} Market Open — Flush Pending Queue",
+                args=[market_key],
+                replace_existing=True,
+            )
 
     # Daily report (16:05 ET, Mon-Fri)
     scheduler.add_job(
