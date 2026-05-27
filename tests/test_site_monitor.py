@@ -86,6 +86,39 @@ class SiteMonitorTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("복구", recovery)
 
+    def test_build_notification_message_suppresses_slow_warning_noise(self):
+        degraded_report = {
+            "overall_status": "degraded",
+            "checked_at": "2026-03-24T00:00:00+00:00",
+            "problem_fingerprint": "platform:warn:slow",
+            "checks": [
+                {
+                    "id": "platform",
+                    "label": "Interactive platform",
+                    "severity": "warn",
+                    "status": "slow",
+                    "status_code": 200,
+                    "elapsed_ms": 2200,
+                    "detail": "slower than 1800ms",
+                    "detail_key": "slow",
+                }
+            ],
+        }
+        self.assertIsNone(build_notification_message({}, degraded_report))
+
+        recovery_report = {
+            "overall_status": "healthy",
+            "checked_at": "2026-03-24T00:05:00+00:00",
+            "problem_fingerprint": "",
+            "checks": [],
+        }
+        self.assertIsNone(
+            build_notification_message(
+                {"overall_status": "degraded", "problem_fingerprint": "platform:warn:slow"},
+                recovery_report,
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
