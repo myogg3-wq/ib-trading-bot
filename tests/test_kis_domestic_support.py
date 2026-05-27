@@ -15,8 +15,10 @@ from app.gateway.symbol_mapper import (
     is_kis_domestic_symbol,
     kis_overseas_currency,
 )
+from app.broker.market_hours import ASIA_MARKET_SESSIONS
 from app.queue.order_queue import _pending_order_matches_market, is_pending_order_expired, pending_order_age_hours
 from app.queue.order_worker import _format_money, _format_signed_money
+from app.scheduler import ASIA_MARKET_OPEN_SCHEDULES
 
 
 class KISDomesticSymbolTests(unittest.TestCase):
@@ -67,7 +69,28 @@ class KISDomesticPendingQueueTests(unittest.TestCase):
         self.assertTrue(_pending_order_matches_market({"ticker": "HKEX:3193"}, "HKEX"))
         self.assertFalse(_pending_order_matches_market({"ticker": "HKEX:3193"}, "US"))
         self.assertFalse(_pending_order_matches_market({"ticker": "SSE:515050"}, "KRX"))
+        self.assertTrue(_pending_order_matches_market({"ticker": "SSE:515050"}, "SSE"))
+        self.assertFalse(_pending_order_matches_market({"ticker": "SSE:515050"}, "SZSE"))
         self.assertTrue(_pending_order_matches_market({"ticker": "TSE:213A"}, "TSE"))
+
+    def test_asia_market_open_schedules_cover_supported_watchlist_markets(self):
+        self.assertEqual(set(ASIA_MARKET_OPEN_SCHEDULES), set(ASIA_MARKET_SESSIONS))
+        self.assertEqual(
+            ASIA_MARKET_OPEN_SCHEDULES["HKEX"]["sessions"],
+            ((9, 30, "morning"), (13, 0, "afternoon")),
+        )
+        self.assertEqual(
+            ASIA_MARKET_OPEN_SCHEDULES["SSE"]["sessions"],
+            ((9, 30, "morning"), (13, 0, "afternoon")),
+        )
+        self.assertEqual(
+            ASIA_MARKET_OPEN_SCHEDULES["SZSE"]["sessions"],
+            ((9, 30, "morning"), (13, 0, "afternoon")),
+        )
+        self.assertEqual(
+            ASIA_MARKET_OPEN_SCHEDULES["TSE"]["sessions"],
+            ((9, 0, "morning"), (12, 30, "afternoon")),
+        )
 
     def test_pending_order_ttl_expires_stale_4h_strategy_orders(self):
         now = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
