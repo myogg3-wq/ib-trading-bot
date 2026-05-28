@@ -98,6 +98,90 @@ def _filled_trade_time_window(start_utc, end_utc):
     )
 
 
+_COMMON_CORPORATE_ACTION_RATIOS = (2, 3, 4, 5, 10)
+
+
+def _near_ratio(value: float, target: float, *, pct_tolerance: float = 0.08, absolute_tolerance: float = 0.03) -> bool:
+    if value <= 0 or target <= 0:
+        return False
+    return abs(value - target) <= max(absolute_tolerance, abs(target) * pct_tolerance)
+
+
+def _weighted_avg_entry_price(open_positions: list[Position]) -> float:
+    total_qty = sum(float(pos.qty or 0.0) for pos in open_positions)
+    if total_qty <= 0:
+        return 0.0
+    total_amount = 0.0
+    for pos in open_positions:
+        qty = float(pos.qty or 0.0)
+        amount = float(pos.entry_amount_usd or 0.0)
+        if amount <= 0:
+            amount = float(pos.entry_price or 0.0) * qty
+        total_amount += amount
+    return total_amount / total_qty if total_amount > 0 else 0.0
+
+
+def _detect_split_adjustment(
+    *,
+    db_qty: float,
+    db_avg_price: float,
+    broker_qty: float,
+    broker_avg_price: float,
+) -> dict | None:
+    """
+    Detect likely corporate-action quantity/price adjustments.
+
+    This intentionally only recognizes common exact-ish split ratios. If it is
+    not confident, normal reconciliation handles the mismatch instead of
+    rewriting the position basis.
+    """
+    if db_qty <= 0 or db_avg_price <= 0 or broker_qty <= 0 or broker_avg_price <= 0:
+        return None
+
+    forward_qty_ratio = broker_qty / db_qty
+    forward_price_ratio = db_avg_price / broker_avg_price
+    for ratio in _COMMON_CORPORATE_ACTION_RATIOS:
+        if _near_ratio(forward_qty_ratio, ratio, pct_tolerance=0.015) and _near_ratio(forward_price_ratio, ratio):
+            return {"direction": "forward", "ratio": float(ratio), "label": f"{ratio}:1"}
+
+    reverse_qty_ratio = db_qty / broker_qty
+    reverse_price_ratio = broker_avg_price / db_avg_price
+    for ratio in _COMMON_CORPORATE_ACTION_RATIOS:
+        if _near_ratio(reverse_qty_ratio, ratio, pct_tolerance=0.015) and _near_ratio(reverse_price_ratio, ratio):
+            return {"direction": "reverse", "ratio": float(ratio), "label": f"1:{ratio}"}
+
+    return None
+
+
+def _detect_price_split_distortion(avg_price: float, current_price: float) -> dict | None:
+    if avg_price <= 0 or current_price <= 0:
+        return None
+    for ratio in _COMMON_CORPORATE_ACTION_RATIOS:
+        if _near_ratio(avg_price / current_price, ratio):
+            return {"direction": "forward", "ratio": float(ratio), "label": f"{ratio}:1"}
+    return None
+
+
+def _apply_split_adjustment_to_positions(open_positions: list[Position], adjustment: dict, now: datetime) -> None:
+    ratio = float(adjustment.get("ratio") or 0.0)
+    direction = str(adjustment.get("direction") or "")
+    if ratio <= 0:
+        return
+
+    for pos in open_positions:
+        qty = float(pos.qty or 0.0)
+        price = float(pos.entry_price or 0.0)
+        if qty <= 0 or price <= 0:
+            continue
+        if direction == "forward":
+            pos.qty = round(qty * ratio, 8)
+            pos.entry_price = round(price / ratio, 8)
+        elif direction == "reverse":
+            pos.qty = round(qty / ratio, 8)
+            pos.entry_price = round(price * ratio, 8)
+        pos.updated_at = now
+
+
 async def _resolve_kis_buy_amount_usd(bot_settings, kis, symbol: str) -> float:
     """Resolve BUY amount for KIS using KRW target when available."""
     fallback_usd = max(float(bot_settings.buy_amount_usd or 0.0), 1.0)
@@ -166,6 +250,33 @@ async def _reconcile_kis_symbol_to_db(kis, symbol: str, alert_id: str | None = N
         )
         open_positions = list(result.scalars().all())
         db_qty = sum(float(pos.qty or 0.0) for pos in open_positions)
+        db_avg = _weighted_avg_entry_price(open_positions)
+
+        split_adjustment = _detect_split_adjustment(
+            db_qty=db_qty,
+            db_avg_price=db_avg,
+            broker_qty=broker_qty,
+            broker_avg_price=broker_avg,
+        )
+        if split_adjustment:
+            _apply_split_adjustment_to_positions(open_positions, split_adjustment, now)
+            logger.warning(
+                "KIS/DB corporate action quantity adjustment applied",
+                ticker=symbol,
+                split_ratio=split_adjustment["label"],
+                broker_qty=broker_qty,
+                db_qty=db_qty,
+                broker_avg=round(broker_avg, 8),
+                db_avg=round(db_avg, 8),
+            )
+            return {
+                "ok": True,
+                "reconciled": True,
+                "corporate_action_adjusted": True,
+                "split_ratio": split_adjustment["label"],
+                "added_qty": 0.0,
+                "closed_qty": 0.0,
+            }
 
         closed_qty = 0.0
         if db_qty > broker_qty + 0.0001:
@@ -311,6 +422,33 @@ async def _reconcile_kis_domestic_symbol_to_db(kis, symbol: str, alert_id: str |
         )
         open_positions = list(result.scalars().all())
         db_qty = sum(float(pos.qty or 0.0) for pos in open_positions)
+        db_avg = _weighted_avg_entry_price(open_positions)
+
+        split_adjustment = _detect_split_adjustment(
+            db_qty=db_qty,
+            db_avg_price=db_avg,
+            broker_qty=broker_qty,
+            broker_avg_price=broker_avg,
+        )
+        if split_adjustment:
+            _apply_split_adjustment_to_positions(open_positions, split_adjustment, now)
+            logger.warning(
+                "KIS domestic/DB corporate action quantity adjustment applied",
+                ticker=symbol,
+                split_ratio=split_adjustment["label"],
+                broker_qty=broker_qty,
+                db_qty=db_qty,
+                broker_avg=round(broker_avg, 8),
+                db_avg=round(db_avg, 8),
+            )
+            return {
+                "ok": True,
+                "reconciled": True,
+                "corporate_action_adjusted": True,
+                "split_ratio": split_adjustment["label"],
+                "added_qty": 0.0,
+                "closed_qty": 0.0,
+            }
 
         closed_qty = 0.0
         if db_qty > broker_qty + 0.0001:
@@ -1460,6 +1598,23 @@ async def _execute_sell_kis_domestic(symbol: str, alert_id: str = "") -> dict:
                 "ticker": symbol,
             }
 
+        split_distortion = _detect_price_split_distortion(avg_price, current_price)
+        if split_distortion:
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "corporate_action_review_required",
+                "error": (
+                    f"{symbol}은 {split_distortion['label']} 분할/권리 반영 지연이 의심되어 "
+                    "SELL 신호를 보류했습니다. KIS 수량과 평균단가가 정산된 뒤 다시 판단합니다."
+                ),
+                "ticker": symbol,
+                "avg_price": round(avg_price, 6),
+                "current_price": round(current_price, 6),
+                "currency": "KRW",
+                "corporate_action": split_distortion,
+            }
+
         pnl_pct = ((current_price - avg_price) / avg_price) * 100.0
         pnl_krw = (current_price - avg_price) * total_qty
         min_profit_pct = float(settings.sell_min_profit_pct or 0.0)
@@ -1606,6 +1761,23 @@ async def _execute_sell_kis(ticker: str, alert_id: str = "") -> dict:
                 "reason": "sell_profit_check_failed",
                 "error": f"{symbol} 매수가/현재가 확인이 불완전해 매도를 보류했습니다",
                 "ticker": symbol,
+            }
+
+        split_distortion = _detect_price_split_distortion(avg_price, current_price)
+        if split_distortion:
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "corporate_action_review_required",
+                "error": (
+                    f"{symbol}은 {split_distortion['label']} 분할/권리 반영 지연이 의심되어 "
+                    "SELL 신호를 보류했습니다. KIS 수량과 평균단가가 정산된 뒤 다시 판단합니다."
+                ),
+                "ticker": symbol,
+                "avg_price": round(avg_price, 6),
+                "current_price": round(current_price, 6),
+                "currency": currency,
+                "corporate_action": split_distortion,
             }
 
         pnl_pct = ((current_price - avg_price) / avg_price) * 100.0

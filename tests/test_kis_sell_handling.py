@@ -13,6 +13,32 @@ from app.broker import order_executor
 from app.broker.kis_client import KISClient, _format_us_order_price
 
 
+class CorporateActionDetectionTests(unittest.TestCase):
+    def test_detects_forward_split_quantity_and_basis_adjustment(self):
+        result = order_executor._detect_split_adjustment(
+            db_qty=1,
+            db_avg_price=106.6999,
+            broker_qty=2,
+            broker_avg_price=53.34995,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["direction"], "forward")
+        self.assertEqual(result["label"], "2:1")
+
+    def test_detects_price_only_split_distortion(self):
+        result = order_executor._detect_price_split_distortion(106.6999, 53.99)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["label"], "2:1")
+
+    def test_does_not_treat_normal_drawdown_as_split(self):
+        self.assertIsNone(order_executor._detect_price_split_distortion(100.0, 85.0))
+
+    def test_price_only_detection_does_not_flag_large_gain_as_reverse_split(self):
+        self.assertIsNone(order_executor._detect_price_split_distortion(53.1577, 101.49))
+
+
 class KISOrderPriceFormattingTests(unittest.TestCase):
     def test_order_price_is_always_two_decimal_text(self):
         self.assertEqual(_format_us_order_price(77.08), "77.08")

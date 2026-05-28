@@ -9,7 +9,13 @@ TEST_KIS_TOKEN_CACHE_PATH = Path(__file__).resolve().parent / ".tmp_kis_access_t
 os.environ["KIS_TOKEN_CACHE_PATH"] = str(TEST_KIS_TOKEN_CACHE_PATH)
 atexit.register(lambda: TEST_KIS_TOKEN_CACHE_PATH.unlink(missing_ok=True))
 
-from app.broker.kis_client import KISClient, _format_krw_order_price, _normalize_domestic_symbol
+from app.broker.kis_client import (
+    KISClient,
+    _OVERSEAS_BALANCE_PATH,
+    _format_krw_order_price,
+    _kis_get_retry_log_method,
+    _normalize_domestic_symbol,
+)
 from app.gateway.symbol_mapper import (
     canonical_trade_symbol,
     is_kis_domestic_symbol,
@@ -58,6 +64,14 @@ class KISDomesticFormattingTests(unittest.TestCase):
     def test_telegram_money_format_uses_won_for_krw(self):
         self.assertEqual(_format_money(100000, "KRW", 1450), "100,000원")
         self.assertEqual(_format_signed_money(-1234, "KRW", 1450), "-1,234원")
+
+
+class KISRetryLoggingTests(unittest.TestCase):
+    def test_balance_lookup_retry_logs_warning_only_on_final_retry(self):
+        self.assertEqual(_kis_get_retry_log_method(_OVERSEAS_BALANCE_PATH, 1, 4), "")
+        self.assertEqual(_kis_get_retry_log_method(_OVERSEAS_BALANCE_PATH, 3, 4), "")
+        self.assertEqual(_kis_get_retry_log_method(_OVERSEAS_BALANCE_PATH, 4, 4), "warning")
+        self.assertEqual(_kis_get_retry_log_method("/other", 1, 4), "warning")
 
 
 class KISDomesticPendingQueueTests(unittest.TestCase):

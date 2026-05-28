@@ -79,6 +79,7 @@ _INTEGRATED_MARGIN_FIELDS = {
     "CNY": ("cny_itgr_ord_psbl_amt", "cny_frst_bltn_exrt"),
     "JPY": ("jpy_itgr_ord_psbl_amt", "jpy_frst_bltn_exrt"),
 }
+_OVERSEAS_BALANCE_PATH = "/uapi/overseas-stock/v1/trading/inquire-balance"
 
 
 def _is_retryable_http_error(exc: Exception) -> bool:
@@ -88,6 +89,12 @@ def _is_retryable_http_error(exc: Exception) -> bool:
         status = int(getattr(exc.response, "status_code", 0) or 0)
         return status in (429, 500, 502, 503, 504)
     return False
+
+
+def _kis_get_retry_log_method(path: str, attempt: int, max_retries: int) -> str:
+    if path == _OVERSEAS_BALANCE_PATH and attempt < max_retries:
+        return ""
+    return "warning"
 
 
 def _to_float(value) -> Optional[float]:
@@ -358,14 +365,17 @@ class KISClient:
                     raise
                 sleep_for = min(max_delay, base_delay * (2 ** max(0, attempt - 1)))
                 sleep_for += random.uniform(0.0, min(0.25, base_delay))
-                logger.warning(
-                    "KIS GET transient error, retrying",
-                    path=path,
-                    attempt=attempt,
-                    max_retries=max_retries,
-                    sleep_seconds=round(sleep_for, 3),
-                    error=str(e),
-                )
+                log_method = _kis_get_retry_log_method(path, attempt, max_retries)
+                if log_method:
+                    log_retry = getattr(logger, log_method)
+                    log_retry(
+                        "KIS GET transient error, retrying",
+                        path=path,
+                        attempt=attempt,
+                        max_retries=max_retries,
+                        sleep_seconds=round(sleep_for, 3),
+                        error=str(e),
+                    )
                 await asyncio.sleep(sleep_for)
 
     async def _request_json(
@@ -822,7 +832,7 @@ class KISClient:
             }
             try:
                 data = await self._get(
-                    "/uapi/overseas-stock/v1/trading/inquire-balance",
+                    _OVERSEAS_BALANCE_PATH,
                     headers=headers,
                     params=params,
                 )
@@ -882,7 +892,7 @@ class KISClient:
             "CTX_AREA_NK200": "",
         }
         data = await self._get(
-            "/uapi/overseas-stock/v1/trading/inquire-balance",
+            _OVERSEAS_BALANCE_PATH,
             headers=headers,
             params=params,
         )

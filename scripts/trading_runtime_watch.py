@@ -319,6 +319,17 @@ def evaluate_issues(*, service_issues: list[str], api_issue: str | None, queue_i
         suffix = f": {preview}" if preview else ""
         issues.append(f"매도 신호 후 아직 보유 중인 종목 {missed_sells}개{suffix}")
 
+    corporate_actions = int(probe.get("suspected_corporate_actions") or 0)
+    if corporate_actions > 0:
+        samples = probe.get("suspected_corporate_action_samples") or []
+        preview = ", ".join(
+            f"{item.get('ticker')}({item.get('split_ratio')})"
+            for item in samples[:8]
+            if item.get("ticker")
+        )
+        suffix = f": {preview}" if preview else ""
+        issues.append(f"분할/권리 반영 지연 의심 {corporate_actions}개{suffix}")
+
     stale_pending = int(probe.get("stale_pending_alerts") or 0)
     if stale_pending > 0:
         issues.append(f"대기 주문 만료 기준 초과 알림 {stale_pending}건")
