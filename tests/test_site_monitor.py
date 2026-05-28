@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from app.main import create_app
-from app.web.site_monitor import build_notification_message, collect_site_report
+from app.web.site_monitor import _build_next_state, build_notification_message, collect_site_report
 
 
 class SiteMonitorTests(unittest.IsolatedAsyncioTestCase):
@@ -118,6 +118,41 @@ class SiteMonitorTests(unittest.IsolatedAsyncioTestCase):
                 recovery_report,
             )
         )
+
+    def test_degraded_cycle_does_not_forget_active_down_incident(self):
+        previous_state = {
+            "checked_at": "2026-03-24T00:00:00+00:00",
+            "overall_status": "down",
+            "problem_fingerprint": "platform:error:missing_marker",
+        }
+        degraded_report = {
+            "overall_status": "degraded",
+            "checked_at": "2026-03-24T00:05:00+00:00",
+            "problem_fingerprint": "platform:warn:slow",
+            "checks": [],
+        }
+
+        self.assertIsNone(build_notification_message(previous_state, degraded_report))
+        degraded_state = _build_next_state(previous_state, degraded_report)
+
+        self.assertEqual(degraded_state["overall_status"], "degraded")
+        self.assertEqual(degraded_state["active_incident_status"], "down")
+        self.assertEqual(
+            degraded_state["active_incident_fingerprint"],
+            "platform:error:missing_marker",
+        )
+
+        recovery_report = {
+            "overall_status": "healthy",
+            "checked_at": "2026-03-24T00:10:00+00:00",
+            "problem_fingerprint": "",
+            "checks": [],
+        }
+        recovery = build_notification_message(degraded_state, recovery_report)
+
+        self.assertIn("복구", recovery)
+        recovered_state = _build_next_state(degraded_state, recovery_report)
+        self.assertNotIn("active_incident_status", recovered_state)
 
 
 if __name__ == "__main__":

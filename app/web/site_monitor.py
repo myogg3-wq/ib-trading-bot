@@ -132,14 +132,22 @@ def build_notification_message(
 ) -> str | None:
     previous_status = previous_state.get("overall_status", "unknown")
     previous_fingerprint = previous_state.get("problem_fingerprint", "")
+    active_incident_status = previous_state.get("active_incident_status")
+    active_incident_fingerprint = previous_state.get("active_incident_fingerprint", "")
     current_status = report["overall_status"]
     current_fingerprint = report["problem_fingerprint"]
+    previously_paged_status = active_incident_status or (
+        previous_status if previous_status == "down" else ""
+    )
+    previously_paged_fingerprint = active_incident_fingerprint or (
+        previous_fingerprint if previous_status == "down" else ""
+    )
 
     if current_status == "healthy":
-        if previous_status == "down":
+        if previously_paged_status == "down":
             lines = [
                 "🟢 사이트 상태가 복구되었습니다.",
-                f"이전 상태: {previous_status.upper()}",
+                f"이전 상태: {previously_paged_status.upper()}",
                 f"복구 시각(UTC): {report['checked_at']}",
             ]
             return "\n".join(lines)
@@ -150,7 +158,10 @@ def build_notification_message(
     if current_status == "degraded":
         return None
 
-    if current_status != previous_status or current_fingerprint != previous_fingerprint:
+    if (
+        current_status != previously_paged_status
+        or current_fingerprint != previously_paged_fingerprint
+    ):
         headline = "🔴 사이트 장애 감지" if current_status == "down" else "🟠 사이트 이상 감지"
         lines = [
             headline,
@@ -162,6 +173,50 @@ def build_notification_message(
         return "\n".join(lines)
 
     return None
+
+
+def _build_next_state(previous_state: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    current_status = report["overall_status"]
+    current_fingerprint = report["problem_fingerprint"]
+    active_incident_status = previous_state.get("active_incident_status")
+    active_incident_fingerprint = previous_state.get("active_incident_fingerprint", "")
+    active_incident_started_at = previous_state.get("active_incident_started_at")
+
+    # Backward compatibility for state files written before active incident
+    # tracking existed. A down incident should not be forgotten just because a
+    # later warning-only degraded check is intentionally muted.
+    if active_incident_status != "down" and previous_state.get("overall_status") == "down":
+        active_incident_status = "down"
+        active_incident_fingerprint = previous_state.get("problem_fingerprint", "")
+        active_incident_started_at = previous_state.get("checked_at")
+
+    if current_status == "down":
+        if (
+            active_incident_status != "down"
+            or active_incident_fingerprint != current_fingerprint
+        ):
+            active_incident_started_at = report["checked_at"]
+        active_incident_status = "down"
+        active_incident_fingerprint = current_fingerprint
+    elif current_status == "healthy":
+        active_incident_status = None
+        active_incident_fingerprint = ""
+        active_incident_started_at = None
+    elif active_incident_status != "down":
+        active_incident_status = None
+        active_incident_fingerprint = ""
+        active_incident_started_at = None
+
+    state = {
+        "checked_at": report["checked_at"],
+        "overall_status": current_status,
+        "problem_fingerprint": current_fingerprint,
+    }
+    if active_incident_status:
+        state["active_incident_status"] = active_incident_status
+        state["active_incident_fingerprint"] = active_incident_fingerprint
+        state["active_incident_started_at"] = active_incident_started_at
+    return state
 
 
 def _fingerprint(checks: list[dict[str, Any]]) -> str:
@@ -335,11 +390,7 @@ async def run_site_monitor_cycle(*, notify: bool = True) -> dict[str, Any]:
     _write_json(_report_path(), report)
     _write_json(
         _state_path(),
-        {
-            "checked_at": report["checked_at"],
-            "overall_status": report["overall_status"],
-            "problem_fingerprint": report["problem_fingerprint"],
-        },
+        _build_next_state(previous_state, report),
     )
 
     if notify and notification:
