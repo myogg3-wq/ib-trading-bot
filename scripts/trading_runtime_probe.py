@@ -35,6 +35,60 @@ from app.notifications import telegram_bot as telegram_bot_module
 from app.queue.order_queue import get_queue_stats, get_redis
 
 
+COMMON_CORPORATE_ACTION_RATIOS = (2, 3, 4, 5, 10)
+
+
+def _to_float(value) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _near_ratio(value: float, target: float, *, pct_tolerance: float = 0.08) -> bool:
+    if value <= 0 or target <= 0:
+        return False
+    return abs(value - target) <= max(0.03, abs(target) * pct_tolerance)
+
+
+def _detect_corporate_action_price_ratio(avg_price: float, current_price: float) -> dict | None:
+    if avg_price <= 0 or current_price <= 0:
+        return None
+    for ratio in COMMON_CORPORATE_ACTION_RATIOS:
+        if _near_ratio(avg_price / current_price, ratio):
+            return {"direction": "forward", "ratio": ratio, "label": f"{ratio}:1"}
+    return None
+
+
+def _balance_row_price(row: dict) -> float:
+    return max(
+        _to_float(row.get("now_pric2")),
+        _to_float(row.get("ovrs_now_pric1")),
+        _to_float(row.get("ovrs_stck_prpr")),
+        _to_float(row.get("stck_prpr")),
+        _to_float(row.get("prpr")),
+    )
+
+
+def _balance_row_avg_price(row: dict) -> float:
+    return max(
+        _to_float(row.get("pchs_avg_pric")),
+        _to_float(row.get("avg_prvs")),
+        _to_float(row.get("avg_price")),
+    )
+
+
+def _balance_row_qty(row: dict) -> float:
+    return max(
+        _to_float(row.get("ovrs_cblc_qty")),
+        _to_float(row.get("cblc_qty")),
+        _to_float(row.get("hold_qty")),
+        _to_float(row.get("blce_qty")),
+        _to_float(row.get("hldg_qty")),
+        _to_float(row.get("ord_psbl_qty")),
+    )
+
+
 async def gather_probe() -> dict:
     now = datetime.now(timezone.utc)
     failed_since = now - timedelta(hours=6)
@@ -71,6 +125,8 @@ async def gather_probe() -> dict:
         "missed_sell_samples": [],
         "pending_buy_cash_coverage": {},
         "pending_oldest_minutes": None,
+        "suspected_corporate_actions": 0,
+        "suspected_corporate_action_samples": [],
         "error": None,
         "kis_error": None,
     }
@@ -210,6 +266,26 @@ async def gather_probe() -> dict:
         )
         result["kis_open_tickers"] = len(kis_symbols)
         result["kis_open_symbols"] = kis_symbols
+        corporate_action_samples = []
+        for row in kis_rows:
+            symbol = _kis_row_symbol(row)
+            avg_price = _balance_row_avg_price(row)
+            current_price = _balance_row_price(row)
+            qty = _balance_row_qty(row)
+            detected = _detect_corporate_action_price_ratio(avg_price, current_price)
+            if not symbol or not detected:
+                continue
+            corporate_action_samples.append(
+                {
+                    "ticker": symbol,
+                    "split_ratio": detected["label"],
+                    "qty": qty,
+                    "avg_price": round(avg_price, 6),
+                    "current_price": round(current_price, 6),
+                }
+            )
+        result["suspected_corporate_actions"] = len(corporate_action_samples)
+        result["suspected_corporate_action_samples"] = corporate_action_samples[:10]
 
         try:
             summary = await kis.get_overseas_balance_summary()

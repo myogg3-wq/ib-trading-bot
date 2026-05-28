@@ -33,6 +33,7 @@ NO_POSITION_REASONS = {
 INTENTIONAL_SELL_HOLD_REASONS = {
     "sell_profit_only_hold",
     "sell_profit_check_failed",
+    "corporate_action_review_required",
 }
 
 

@@ -248,6 +248,8 @@ async def job_kis_position_reconcile():
                         "ticker": symbol,
                         "added_qty": float(result.get("added_qty", 0.0) or 0.0),
                         "closed_qty": float(result.get("closed_qty", 0.0) or 0.0),
+                        "corporate_action_adjusted": bool(result.get("corporate_action_adjusted")),
+                        "split_ratio": str(result.get("split_ratio") or ""),
                         "ok": bool(result.get("ok")),
                     }
                 )
@@ -256,14 +258,22 @@ async def job_kis_position_reconcile():
             except Exception as exc:
                 errors.append(f"{symbol}: {str(exc)}")
 
-        changed = [item for item in repaired if item["added_qty"] > 0 or item["closed_qty"] > 0]
+        changed = [
+            item
+            for item in repaired
+            if item["added_qty"] > 0 or item["closed_qty"] > 0 or item.get("corporate_action_adjusted")
+        ]
         if changed or errors:
             lines = ["🧭 KIS 보유/DB 자동 정합화"]
             if changed:
                 lines.append(
                     "복구: "
                     + ", ".join(
-                        f"{item['ticker']}(+{item['added_qty']:.0f}/-{item['closed_qty']:.0f})"
+                        (
+                            f"{item['ticker']}(분할 {item['split_ratio']})"
+                            if item.get("corporate_action_adjusted")
+                            else f"{item['ticker']}(+{item['added_qty']:.0f}/-{item['closed_qty']:.0f})"
+                        )
                         for item in changed
                     )
                 )
